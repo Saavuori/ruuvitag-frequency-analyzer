@@ -178,7 +178,12 @@ class Handler(BaseHTTPRequestHandler):
             return {"empty": True,
                     "reason": "no raw samples in this window - is the tag streaming?"}
 
-        samples, first_index, missing = dsp.assemble([(i, a) for i, a, _ in raw])
+        # Blocks from before the tag last rebooted belong to a different time
+        # base; keeping them would render the index reset as one enormous gap.
+        run = dsp.latest_run(raw)
+        if len(run) < len(raw):
+            raw = raw[len(raw) - len(run):]
+        samples, first_index, missing = dsp.assemble(run)
 
         fs_mhz = store.block_rate_mhz(_conn, mac)
         fs = (fs_mhz / 1000.0) if fs_mhz else protocol.NOMINAL_RATE_HZ

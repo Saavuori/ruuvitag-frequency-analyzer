@@ -323,6 +323,29 @@ def spectral_flatness(amp_ug: np.ndarray) -> float:
     return float(np.exp(np.log(p).mean()) / p.mean())
 
 
+def latest_run(blocks: list[tuple[int, np.ndarray, float]]
+               ) -> list[tuple[int, np.ndarray]]:
+    """Drop everything before the tag's most recent reboot.
+
+    The sample index is monotonic *within one boot* and restarts at zero after a
+    reset. Handed the lot, `assemble` reads that restart as a gap hundreds of
+    thousands of samples wide and marks every window in the span as lost - which
+    is exactly what a live capture across a reflash did.
+
+    A reboot is not missing data, it is a new time base. Blocks arrive in host
+    time order, so a first_index that goes *backwards* is the reset; keep only
+    what follows the last one.
+    """
+    if not blocks:
+        return []
+
+    start = 0
+    for i in range(1, len(blocks)):
+        if blocks[i][0] < blocks[i - 1][0]:
+            start = i
+    return [(i, a) for i, a, _ in blocks[start:]]
+
+
 def assemble(blocks: list[tuple[int, np.ndarray]], expect_gaps: bool = True
              ) -> tuple[np.ndarray, int, int]:
     """Stitch indexed sample blocks into one array, NaN across what was lost.

@@ -242,6 +242,29 @@ def test_short_capture_says_so_instead_of_guessing():
     assert res.notes and "1024" in res.notes[0]
 
 
+def test_latest_run_drops_everything_before_a_reboot():
+    """The sample index restarts at zero when the tag resets. Treating that as a
+    gap marks every window in the capture as lost - which is what a live capture
+    across a reflash actually did before this existed."""
+    a = np.ones((100, 3), dtype=np.int16)
+    b = np.full((100, 3), 2, dtype=np.int16)
+    c = np.full((100, 3), 3, dtype=np.int16)
+    # Two boots: indices 900000 and 900100, then a reset back to 0.
+    blocks = [(900_000, a, 1.0), (900_100, b, 2.0), (0, c, 3.0)]
+    run = dsp.latest_run(blocks)
+    assert len(run) == 1 and run[0][0] == 0
+
+    out, first, missing = dsp.assemble(run)
+    assert missing == 0
+    assert out.shape[0] == 100
+
+
+def test_latest_run_keeps_an_uninterrupted_capture_whole():
+    a = np.ones((100, 3), dtype=np.int16)
+    blocks = [(0, a, 1.0), (100, a, 2.0), (200, a, 3.0)]
+    assert len(dsp.latest_run(blocks)) == 3
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in sorted(globals().items()):
