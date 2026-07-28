@@ -144,7 +144,14 @@ class Handler(BaseHTTPRequestHandler):
                     r["info"] = json.loads(r["info_json"])
                 except ValueError:
                     r["info"] = None
-            del r["info_json"]
+            if r.get("stats_json"):
+                try:
+                    r["stats"] = json.loads(r["stats_json"])
+                    r["power"] = protocol.power_model(r["stats"])
+                except ValueError:
+                    r["stats"] = None
+            r.pop("info_json", None)
+            r.pop("stats_json", None)
         return {"tags": rows, "stream": self._stream_status()}
 
     def _stream_status(self):
@@ -203,10 +210,15 @@ class Handler(BaseHTTPRequestHandler):
         anchor = ts0 - (len(arr0) / fs)          # ts is written when the block closes
         t0 = anchor + (first_index - idx0) / fs
 
+        # Three equal-width slices of whatever band was asked for, so the
+        # traces still mean something when the span is not 1-50 Hz.
+        lo, hi = res.freqs_hz[0], res.freqs_hz[-1]
+        edges = [lo + (hi - lo) * f for f in (0.0, 1 / 3, 2 / 3, 1.0)]
         bands = {
-            "1-10": dsp.band_amplitude(res.freqs_hz, res.amp_ug, 1, 10, res.enbw_bins),
-            "10-25": dsp.band_amplitude(res.freqs_hz, res.amp_ug, 10, 25, res.enbw_bins),
-            "25-50": dsp.band_amplitude(res.freqs_hz, res.amp_ug, 25, 50, res.enbw_bins),
+            f"{edges[i]:.0f}-{edges[i + 1]:.0f}":
+                dsp.band_amplitude(res.freqs_hz, res.amp_ug,
+                                   edges[i], edges[i + 1], res.enbw_bins)
+            for i in range(3)
         }
 
         # Decimate columns and band traces together, so a point in one lines up

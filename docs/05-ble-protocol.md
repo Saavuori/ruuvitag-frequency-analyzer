@@ -90,8 +90,9 @@ tags that support it.
 ```
 Service  f1a70001-9c3f-4f5a-8b21-2d6a3c9e7d10
   Samples  f1a70002-…   notify   raw AC samples, gravity removed
-  Control  f1a70003-…   write    0x01 start, 0x00 stop
+  Control  f1a70003-…   write    0x01 start, 0x00 stop, 0x02 <u16> threshold
   Info     f1a70004-…   read     rates and units
+  Stats    f1a70005-…   read     duty cycle, counts, battery
 ```
 
 ### Samples notification
@@ -140,6 +141,26 @@ Take the label and every frequency the analyser draws is 5.4% high: a 50 Hz
 component reads as 52.7 Hz, and mains hum lands somewhere it cannot be
 recognised. The host scales by the measured rate and the UI marks the
 difference between "measured" and "assumed".
+
+### Stats characteristic
+
+22 bytes, little-endian: uptime (u32 s), then milliseconds idle / bursting /
+streaming (u32 each), then burst count, motion count and battery millivolts
+(u16 each). Battery 0 means the ADC could not be read — not a flat cell.
+
+This exists because battery life cannot be measured on this bench. A CR2477
+barely moves in voltage for months, so a voltage trend can contradict a
+multi-year estimate but never confirm one. Reporting occupancy instead makes the
+power figure arithmetic over numbers the tag actually observed; only the
+per-mode currents are taken on trust. See [08 Power](08-power.md).
+
+### Control command 0x02 — motion threshold
+
+`0x02` followed by a little-endian `uint16` of milligravity re-arms the activity
+interrupt at that threshold. **Not persisted**: a reboot returns to
+`CONFIG_RFA_MOTION_THRESHOLD_MG`. It is a tuning aid, because the right
+threshold depends on what the tag is bolted to and finding it by reflashing is
+miserable. `tools/tune_motion.py` drives it.
 
 ### Measured behaviour
 

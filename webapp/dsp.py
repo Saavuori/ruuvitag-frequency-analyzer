@@ -27,14 +27,33 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-# Analysis band. 1 Hz at the bottom because the DC tracker's residual drift and
-# the window's own leakage make anything below it untrustworthy; 50 Hz at the
-# top because that is Nyquist for the 100 Hz broadcast stage and the stated goal
-# of the instrument. The GATT stream is sampled at 400 Hz and could in principle
-# show 200 Hz - `f_max` is not clamped, so raising it is a UI change, not a
-# rewrite - but nothing above 50 Hz has been checked against a known source.
+# Analysis band.
+#
+# 1 Hz at the bottom because the DC tracker's residual drift and the window's
+# own leakage make anything below it untrustworthy.
+#
+# 150 Hz at the top because that is where the sensor stops being trustworthy,
+# measured rather than assumed. A 30 s capture at 0.18 Hz resolution gave a
+# median per-bin noise floor of:
+#
+#     1-10 Hz    374 ug        50-100 Hz   242 ug
+#     10-50 Hz   361 ug       100-150 Hz   268 ug
+#                             150-188 Hz   581 ug
+#
+# Flat to 150 Hz - slightly better above 50 than below it, since the low end
+# carries the DC tracker's residue - then doubling as it approaches the 188 Hz
+# Nyquist, where there is no anti-alias filter to protect it.
+#
+# Widening the span does not raise the per-bin floor: bin noise follows bin
+# width, not total bandwidth. It only raises band-RMS figures, which integrate
+# over more of it.
+#
+# f_hi is not clamped, so `?fhi=188` still works if you want to look at the
+# degraded top end. The broadcast 0xC2 channel stays 0-50 Hz regardless - it is
+# defined at the 100 Hz decimated stage and cannot widen without a new spec
+# version.
 BAND_LO_HZ = 1.0
-BAND_HI_HZ = 50.0
+BAND_HI_HZ = 150.0
 
 WINDOWS = ("hann", "hamming", "blackman", "flattop", "rect")
 

@@ -1,13 +1,20 @@
 # RuuviTag frequency analyzer
 
-Custom firmware and a web app that turn a RuuviTag into a **1–50 Hz vibration
+Custom firmware and a web app that turn a RuuviTag into a **1–150 Hz vibration
 spectrum analyzer**. The tag streams raw accelerometer samples over BLE; the
 browser shows a live spectrum and a scrolling waterfall.
 
 > Not affiliated with or endorsed by Ruuvi Innovations Ltd. "RuuviTag" is their
 > product name; this project merely runs on their hardware.
 
-![band](https://img.shields.io/badge/band-1--50%20Hz-orange) ![rate](https://img.shields.io/badge/sample%20rate-400%20Hz-blue) ![resolution](https://img.shields.io/badge/resolution-0.39%20Hz-blue)
+![band](https://img.shields.io/badge/band-1--150%20Hz-orange) ![rate](https://img.shields.io/badge/sample%20rate-400%20Hz-blue) ![resolution](https://img.shields.io/badge/resolution-0.39%20Hz-blue)
+
+![The analyzer showing three tones](docs/images/analyzer-synthetic.png)
+
+*Live spectrum above, scrolling history below, sharing one frequency axis — find
+a peak in the trace and follow it straight down to see how long it has been
+there. Three tones at 3.1, 12.5 and 33 Hz. Reproduce this exact picture with no
+hardware at all:* `python tools/fake_source.py --duration 280`
 
 ---
 
@@ -21,7 +28,7 @@ which does the transform.
 
 | | |
 |---|---|
-| Band | 1–50 Hz (Nyquist is 190 Hz; nothing above 50 has been checked against a known source) |
+| Band | **1–150 Hz** by default (Nyquist is 188 Hz; the top 40 Hz is measurably degraded) |
 | Sample rate | 400 Hz, 3 axes, ±2 g, 12-bit high-resolution mode |
 | Resolution | 0.39 Hz at the default 1024-point transform — and therefore a 2.56 s window |
 | Transport | GATT notifications, ~2.4 kB/s, plus a connectionless 0xC2 broadcast |
@@ -33,11 +40,26 @@ Everything below was measured on a real tag (nRF52832, `D6:3A:83:30:44:86`),
 not asserted:
 
 ```
-INFO      nominal 400.0 Hz   measured 379.658 Hz   3 axes   ±2 g
+INFO      nominal 400.0 Hz   measured 373.9-379.7 Hz   3 axes   ±2 g
 stream    742 packets in 30.2 s → 11416 samples = 377.9 Hz effective
 loss      0 gap flags, 0 samples lost by index
 bandwidth 2.36 kB/s
+noise     374 ug/bin at 1-10 Hz, 242 at 50-100, 268 at 100-150, 581 at 150-188
+idle      92.3% idle duty → 30.5 uA modelled → ~3 years on a CR2477
 ```
+
+The band stops at 150 Hz because that is where the sensor stops being
+trustworthy, not because of Nyquist: the per-bin noise floor is flat to 150 Hz
+and roughly doubles above it, approaching Nyquist with no anti-alias filter to
+protect it.
+
+![A real capture from the tag](docs/images/analyzer-live.png)
+
+*The same view on real data — a tag on a desk. The bright band at the top of the
+history is something knocking it; the horizontal streaks are brief broadband
+events; the trace shows the low-frequency rolloff of ordinary structural
+vibration, with max-hold in cyan above the live trace. Not a tidy signal, which
+is what real ones look like.*
 
 **The measured rate is 5.1% below nominal.** That is not a defect, it is what an
 RC oscillator does, and it is why the tag reports its own measured ODR and the
@@ -111,6 +133,9 @@ is a real answer.
   it is a trap.
 - **Resolution and window length are the same fact.** 0.39 Hz bins require a
   2.56 s window. Overlap slides that window more often; it does not shorten it.
+- **Battery life is modelled, not measured.** The tag reports its own duty
+  cycle; the per-mode currents are datasheet figures. See
+  [`docs/08-power.md`](docs/08-power.md).
 - **This is not a medical or safety device.** It measures vibration.
 
 ## Documentation
@@ -125,6 +150,7 @@ is a real answer.
 | [05 BLE protocol](docs/05-ble-protocol.md) | DF5, 0xC2, and the GATT stream, byte by byte |
 | [06 Web app](docs/06-webapp.md) | The UI, and why it is laid out that way |
 | [07 Build and flash](docs/07-build-and-flash.md) | Zephyr workspace, SWD, recovery |
+| [08 Power](docs/08-power.md) | Duty cycling, the model, and what is actually measured |
 | [ADRs](docs/adr/) | Decisions and their reasoning |
 
 ## Licence

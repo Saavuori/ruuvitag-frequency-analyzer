@@ -173,6 +173,45 @@ def test_info_decode():
     assert d["full_scale_g"] == 2
 
 
+def test_stats_decode():
+    raw = (struct.pack("<IIII", 3600, 3_300_000, 300_000, 0)
+           + struct.pack("<HHH", 55, 12, 2890))
+    d = p.decode_stats(raw)
+    assert d["uptime_s"] == 3600
+    assert d["bursts"] == 55
+    assert d["motion_events"] == 12
+    assert d["battery_mv"] == 2890
+
+
+def test_stats_battery_zero_means_not_measured():
+    """0 is the firmware's "ADC unavailable" code and must not decode as a flat
+    cell - a fabricated 0 mV gets plotted and believed."""
+    raw = struct.pack("<IIII", 10, 10_000, 0, 0) + struct.pack("<HHH", 1, 0, 0)
+    assert p.decode_stats(raw)["battery_mv"] is None
+
+
+def test_power_model_matches_duty_cycle():
+    """A tag idle 90% of the time must model far below one that is awake.
+
+    The numbers here are the two the bench actually produced, before and after
+    the motion threshold was raised."""
+    busy = {"uptime_s": 208, "idle_ms": 16_037, "burst_ms": 192_274,
+            "active_ms": 0, "bursts": 71, "motion_events": 71, "battery_mv": 2890}
+    quiet = {"uptime_s": 141, "idle_ms": 130_000, "burst_ms": 10_800,
+             "active_ms": 0, "bursts": 4, "motion_events": 1, "battery_mv": 2876}
+
+    mb, mq = p.power_model(busy), p.power_model(quiet)
+    assert mb["duty_idle"] < 0.15 and mq["duty_idle"] > 0.85
+    assert mb["average_ua"] > 5 * mq["average_ua"]
+    assert mq["cell_days"] > 365
+
+
+def test_power_model_waits_for_enough_uptime():
+    """Thirty seconds of occupancy says nothing. Returning None beats returning
+    a confident number derived from one burst."""
+    assert p.power_model({"idle_ms": 500, "burst_ms": 2700, "active_ms": 0}) is None
+
+
 def test_effective_rate_prefers_measured():
     """The oscillator is an RC part a few percent off nominal. Taking the label
     puts that error on every frequency the analyser draws."""

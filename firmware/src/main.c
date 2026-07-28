@@ -3,8 +3,10 @@
  *
  * Two transports, deliberately different in kind (docs/05-ble-protocol.md):
  *
- *   broadcast  DF5 every other slot, 0xC2 spectrum chunks in between.
- *              No connection, any number of listeners, one spectrum per ~10 s.
+ *   broadcast  DF5 every other slot, 0xC2 spectrum chunks in between. No
+ *              connection, any number of listeners. The sensor is duty-cycled
+ *              between bursts, so a spectrum arrives once per idle period or
+ *              when something moves (power.h).
  *
  *   connected  GATT notifications carrying raw 400 Hz samples. This is what the
  *              analyser uses; the host does the transform.
@@ -24,16 +26,22 @@
 #include <zephyr/logging/log.h>
 
 #include "adv.h"
+#include "battery.h"
 #include "env.h"
 #include "gatt_stream.h"
 #include "leds.h"
+#include "power.h"
 #include "sampler.h"
 
 LOG_MODULE_REGISTER(rfa, LOG_LEVEL_INF);
 
-/* DF5 repeats every 2.56 s in Ruuvi's own firmware, so a 1.28 s slot with DF5
- * in every other one matches the cadence downstream rate logic expects. */
-#define ADV_SLOT_MS 1280
+/* One payload per advertising interval. Matching the two means the radio never
+ * sends the same bytes twice and the CPU never wakes to prepare bytes that are
+ * not sent - both of which are pure waste on a battery. */
+#define ADV_SLOT_MS CONFIG_RFA_ADV_INTERVAL_MS
+
+/* BLE advertising intervals are in 0.625 ms units. */
+#define ADV_UNITS(ms) ((ms) * 8 / 5)
 
 /*
  * FIFO poll period. The hardware FIFO is 32 slots deep; at 400 Hz that is 80 ms
@@ -69,7 +77,8 @@ static const struct bt_data adv_sd[] = {
  * response still goes out - that is where the service UUID lives. */
 static const struct bt_le_adv_param adv_param_conn = BT_LE_ADV_PARAM_INIT(
 	BT_LE_ADV_OPT_CONN | BT_LE_ADV_OPT_USE_IDENTITY,
-	BT_GAP_ADV_SLOW_INT_MIN, BT_GAP_ADV_SLOW_INT_MAX, NULL);
+	ADV_UNITS(CONFIG_RFA_ADV_INTERVAL_MS),
+	ADV_UNITS(CONFIG_RFA_ADV_INTERVAL_MS) + 16, NULL);
 
 static struct {
 	uint8_t  mac[6];
@@ -125,19 +134,24 @@ static void build_df5(uint8_t out[RFA_ADV_PAYLOAD_LEN])
 		f.accel_mg[i] = dc[i];
 	}
 
-	/* TODO(fw-1): sample VDD through the SAADC. Until then say "not
-	 * measured" rather than inventing a voltage. */
-	f.battery_mv = RFA_BATTERY_NOT_MEASURED;
-	f.tx_power_dbm = 4;
+	/* 0 when the ADC could not be read, which the encoder maps to DF5's
+	 * invalid battery code - "not measured" rather than a flat cell. */
+	f.battery_mv = rfa_battery_millivolts();
+
+	/* Report what the radio is actually configured for. Claiming +4 dBm
+	 * while the controller transmits at 0 puts a 4 dB error into anyone's
+	 * path-loss estimate, and the field exists precisely so that estimate is
+	 * possible. */
+	f.tx_power_dbm = CONFIG_BT_CTLR_TX_PWR_DBM;
 
 	k_mutex_lock(&state_lock, K_FOREVER);
 	f.sequence = app.sequence++;
 	k_mutex_unlock(&state_lock);
 
-	/* DF5's movement counter counts threshold-crossing events. This firmware
-	 * measures spectra, not events, so it stays at 0 rather than carrying a
-	 * number derived from a threshold nobody chose. */
-	f.movement_counter = 0;
+	/* Activity-interrupt events. That is exactly what DF5's movement counter
+	 * means in Ruuvi's ecosystem, and watching it is how the motion threshold
+	 * gets checked against a real machine. */
+	f.movement_counter = rfa_power_movement_counter();
 
 	memcpy(f.mac, app.mac, sizeof(f.mac));
 	rfa_encode_df5(&f, out);
@@ -163,7 +177,7 @@ static void build_df5(uint8_t out[RFA_ADV_PAYLOAD_LEN])
  * stack owns the radio and advertising stops; DF5 pauses for the duration of
  * the capture, which is the price of never going permanently quiet. The moment
  * the connection drops, the next slot starts advertising again, and a start
- * that fails is simply retried 1.28 s later.
+ * that fails is simply retried on the next slot.
  *
  * A tag that reliably comes back is worth more than one that broadcasts through
  * a capture and then dies.
@@ -234,6 +248,15 @@ static void sample_thread(void *a, void *b, void *c)
 	ARG_UNUSED(a); ARG_UNUSED(b); ARG_UNUSED(c);
 
 	while (1) {
+		if (!rfa_power_sampling()) {
+			/* Sensor is in low-power mode and nothing is arriving.
+			 * Sleeping here rather than polling at 40 ms is most of
+			 * what duty cycling buys: 25 CPU wakes a second become
+			 * one, and the FIFO holds nothing worth reading anyway. */
+			k_msleep(200);
+			continue;
+		}
+
 		rfa_sampler_poll();
 
 		/* Pick up a completed transform if one is waiting and the
@@ -293,7 +316,9 @@ int main(void)
 		LOG_ERR("accelerometer init failed; no spectra will be produced");
 	}
 	rfa_env_init();
+	rfa_battery_init();
 	rfa_gatt_stream_init();
+	rfa_power_init();
 
 	build_df5(payload);
 	mfg_data[0] = RFA_RUUVI_COMPANY_ID & 0xFF;

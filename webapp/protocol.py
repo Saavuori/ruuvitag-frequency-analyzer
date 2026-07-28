@@ -53,6 +53,7 @@ SERVICE_UUID = "f1a70001-9c3f-4f5a-8b21-2d6a3c9e7d10"
 CHAR_SAMPLES = "f1a70002-9c3f-4f5a-8b21-2d6a3c9e7d10"
 CHAR_CONTROL = "f1a70003-9c3f-4f5a-8b21-2d6a3c9e7d10"
 CHAR_INFO    = "f1a70004-9c3f-4f5a-8b21-2d6a3c9e7d10"
+CHAR_STATS   = "f1a70005-9c3f-4f5a-8b21-2d6a3c9e7d10"
 
 STREAM_HEADER_LEN = 6
 STREAM_BYTES_PER_SAMPLE = 6
@@ -60,6 +61,9 @@ STREAM_FLAG_GAP = 0x01
 
 CMD_STOP = bytes([0x00])
 CMD_START = bytes([0x01])
+# 0x02 <uint16 LE mg>: re-arm wake-on-motion at a new threshold. Not persisted -
+# a reboot returns to the firmware's compiled default. See tools/tune_motion.py.
+CMD_SET_THRESHOLD = 0x02
 
 NOMINAL_RATE_HZ = 400.0
 
@@ -267,6 +271,78 @@ def decode_info(data: bytes) -> dict:
         "measured_hz": (measured_mhz / 1000.0) if measured_mhz else None,
         "mg_per_lsb": mg_per_lsb,
         "full_scale_g": full_scale_g,
+    }
+
+
+# Per-mode current in microamps, for the power model in `power_model()`.
+#
+# These are DATASHEET figures, not measurements. There is no current meter on
+# this bench, so the model's inputs are half measured (the duty cycles, which
+# the tag counts itself) and half taken on trust (these). Anything derived from
+# them is labelled a model, never a measurement.
+MODE_CURRENT_UA = {
+    # LIS2DH12 low-power 10 Hz + nRF52 sleep + advertising at 2 s.
+    "idle": 18.0,
+    # LIS2DH12 400 Hz high-resolution + CPU polling the FIFO at 40 ms.
+    "burst": 180.0,
+    # As burst, plus a live BLE connection pushing ~2.4 kB/s.
+    "active": 3500.0,
+}
+
+# CR2477 nominal capacity. Derated because the rating is quoted at a low
+# continuous drain and BLE draws in pulses; a coin cell delivers appreciably
+# less under that load, and less again when cold.
+CELL_MAH = 1000.0
+CELL_DERATE = 0.8
+
+
+def decode_stats(data: bytes) -> dict:
+    """The Stats characteristic: what the tag measured about its own duty cycle.
+
+    Battery life cannot be measured directly here - a CR2477 barely moves in
+    voltage for months, so a voltage trend can contradict a multi-year estimate
+    but never confirm one. Reporting occupancy instead makes the power figure a
+    model whose *inputs* are measured on the tag.
+    """
+    if len(data) < 22:
+        raise ValueError(f"stats needs 22 bytes, got {len(data)}")
+
+    uptime_s, idle_ms, burst_ms, active_ms = struct.unpack_from("<IIII", data, 0)
+    bursts, motion, battery_mv = struct.unpack_from("<HHH", data, 16)
+
+    return {
+        "uptime_s": uptime_s,
+        "idle_ms": idle_ms,
+        "burst_ms": burst_ms,
+        "active_ms": active_ms,
+        "bursts": bursts,
+        "motion_events": motion,
+        "battery_mv": battery_mv or None,
+    }
+
+
+def power_model(stats: dict) -> dict | None:
+    """Average current and cell life implied by the measured duty cycle.
+
+    Returns None until enough time has accrued to mean anything. The result is
+    a model: the occupancy is measured, the per-mode currents are not.
+    """
+    total = stats["idle_ms"] + stats["burst_ms"] + stats["active_ms"]
+    if total < 30_000:
+        return None
+
+    ua = (stats["idle_ms"] * MODE_CURRENT_UA["idle"]
+          + stats["burst_ms"] * MODE_CURRENT_UA["burst"]
+          + stats["active_ms"] * MODE_CURRENT_UA["active"]) / total
+
+    hours = (CELL_MAH * CELL_DERATE * 1000.0) / ua if ua > 0 else float("inf")
+    return {
+        "average_ua": round(ua, 1),
+        "duty_idle": round(stats["idle_ms"] / total, 4),
+        "duty_burst": round(stats["burst_ms"] / total, 4),
+        "duty_active": round(stats["active_ms"] / total, 4),
+        "cell_days": round(hours / 24.0, 1),
+        "basis": "measured duty cycle, datasheet per-mode current",
     }
 
 

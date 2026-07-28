@@ -6,6 +6,8 @@ project(ruuvitag_frequency_analyzer)
 target_sources(app PRIVATE
   src/main.c
   src/sampler.c
+  src/power.c
+  src/battery.c
   src/lis2dh12.c
   src/gatt_stream.c
   src/env.c

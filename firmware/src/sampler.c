@@ -18,6 +18,7 @@
 #include "adv.h"
 #include "fft.h"
 #include "lis2dh12.h"
+#include "power.h"
 #include "sampler.h"
 
 LOG_MODULE_REGISTER(rfa_sampler, LOG_LEVEL_INF);
@@ -153,11 +154,16 @@ void rfa_sampler_poll(void)
 	}
 
 	/*
-	 * Recompute the broadcast spectrum once per hop rather than once per
-	 * sample. RFA_WF_HOP of 128 against a 256-point window is 50% overlap:
-	 * a new spectrum every 1.28 s, which is already faster than the 8
-	 * advertisements it takes to transmit one.
+	 * Recompute the broadcast spectrum once a full window has accumulated
+	 * since the last one. RFA_WF_HOP of 128 against a 256-point window is
+	 * 50% overlap while streaming continuously.
+	 *
+	 * In a duty-cycled burst the ring was cleared on entry, so the first
+	 * transform only becomes possible once RFA_WF_N fresh samples have
+	 * arrived - 2.56 s at the 100 Hz stage. That is what ends the burst.
 	 */
+	bool produced = false;
+
 	if (st.wf_fill >= RFA_WF_N && st.wf_since_transform >= RFA_WF_HOP) {
 		static float wf[RFA_WF_N];
 
@@ -169,7 +175,30 @@ void rfa_sampler_poll(void)
 		st.spectrum_ready = true;
 		st.spectrum_invalid = st.wf_overrun;
 		st.wf_overrun = false;
+		produced = true;
 	}
+	k_mutex_unlock(&lock);
+
+	/* Outside the lock: rfa_power_burst_complete() takes its own, and
+	 * holding both in one order here and the other order elsewhere is how
+	 * deadlocks are built. */
+	if (produced) {
+		rfa_power_burst_complete();
+	}
+}
+
+void rfa_sampler_discard(void)
+{
+	k_mutex_lock(&lock, K_FOREVER);
+	/* A burst starts from silence, not from whatever the low-power stage
+	 * dribbled in at 10 Hz. Those samples are 8-bit and 40x too slow; left
+	 * in the ring they would be transformed as if they were 100 Hz data. */
+	st.wf_fill = 0;
+	st.wf_head = 0;
+	st.wf_since_transform = 0;
+	st.wf_overrun = false;
+	st.s1_count = 0;
+	memset(st.s1_acc, 0, sizeof(st.s1_acc));
 	k_mutex_unlock(&lock);
 }
 

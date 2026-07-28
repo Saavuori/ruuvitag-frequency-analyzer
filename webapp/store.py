@@ -79,7 +79,8 @@ CREATE TABLE IF NOT EXISTS tags (
     packets        INTEGER NOT NULL DEFAULT 0,
     stream_samples INTEGER NOT NULL DEFAULT 0,
     streamable     INTEGER NOT NULL DEFAULT 0,  -- advertised the service UUID
-    info_json      TEXT
+    info_json      TEXT,
+    stats_json     TEXT
 );
 """
 
@@ -99,8 +100,22 @@ def connect(path: str | None = None) -> sqlite3.Connection:
 def init(path: str | None = None) -> sqlite3.Connection:
     conn = connect(path)
     conn.executescript(SCHEMA)
+    # Databases created before the power work lack this column, and CREATE TABLE
+    # IF NOT EXISTS will not add it. Cheaper than a migration framework for one
+    # column, and it keeps an existing capture readable.
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(tags)")}
+    if "stats_json" not in cols:
+        conn.execute("ALTER TABLE tags ADD COLUMN stats_json TEXT")
     conn.commit()
     return conn
+
+
+def set_stats(conn: sqlite3.Connection, mac: str, stats_json: str) -> None:
+    conn.execute(
+        "INSERT INTO tags (mac, stats_json) VALUES (?, ?) "
+        "ON CONFLICT(mac) DO UPDATE SET stats_json = excluded.stats_json",
+        (mac, stats_json))
+    conn.commit()
 
 
 def _touch_tag(conn: sqlite3.Connection, mac: str, ts: float,
@@ -226,7 +241,7 @@ def series(conn: sqlite3.Connection, mac: str, since_s: float = 3600) -> list[di
 def tags(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         "SELECT mac, first_seen, last_seen, last_rssi, packets, stream_samples, "
-        "streamable, info_json FROM tags ORDER BY last_seen DESC"
+        "streamable, info_json, stats_json FROM tags ORDER BY last_seen DESC"
     ).fetchall()
     return [dict(r) for r in rows]
 

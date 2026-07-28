@@ -1,0 +1,34 @@
+/*
+ * Battery sensing.
+ *
+ * The board enables the SAADC but declares no channels, so this adds one. It
+ * measures the nRF52832's own supply rail through the internal VDD input -
+ * there is no divider to wire because the coin cell *is* VDD on a RuuviTag.
+ *
+ * Gain 1/6 against the internal 0.6 V reference gives a 3.6 V full scale, which
+ * covers a fresh CR2477 (~3.0 V) with headroom and still resolves ~0.9 mV per
+ * LSB at 12 bits. Anything with a smaller full scale would clip a new cell.
+ */
+
+/ {
+	zephyr,user {
+		io-channels = <&adc 0>;
+	};
+};
+
+&adc {
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@0 {
+		reg = <0>;
+		zephyr,gain = "ADC_GAIN_1_6";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		/* 40 us: the internal VDD path is low impedance, but the SAADC
+		 * still needs acquisition time to settle its sampling capacitor
+		 * and the default is not always enough on nRF52. */
+		zephyr,acquisition-time = <ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 40)>;
+		zephyr,input-positive = <NRF_SAADC_VDD>;
+		zephyr,resolution = <12>;
+	};
+};

@@ -12,7 +12,7 @@
   <div class="ident">
     <span class="mark" aria-hidden="true"></span>
     <h1>Spectrum analyzer</h1>
-    <span class="band">1 – 50 Hz</span>
+    <span class="band" id="bandlabel">1 – 150 Hz</span>
   </div>
 
   <div class="ident-controls">
@@ -64,6 +64,15 @@
         <option value="x">X</option>
         <option value="y">Y</option>
         <option value="mag">|xyz|</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Band</span>
+      <select id="band">
+        <option value="1,150" selected>1–150 Hz</option>
+        <option value="1,50">1–50 Hz</option>
+        <option value="1,25">1–25 Hz</option>
+        <option value="1,188">1–188 Hz</option>
       </select>
     </label>
     <label class="field">
@@ -150,11 +159,17 @@
       <p class="note">RMS amplitude in each band over the span. Components add in
          power, so a band reads the total energy in it, not its loudest bin.</p>
       <canvas id="bands" height="150"></canvas>
-      <div class="key">
-        <span class="swatch b1"></span>1–10 Hz
-        <span class="swatch b2"></span>10–25 Hz
-        <span class="swatch b3"></span>25–50 Hz
-      </div>
+      <div class="key" id="bandkey"></div>
+    </section>
+
+    <section class="pane">
+      <div class="pane-head"><h2>Power</h2></div>
+      <p class="note">The tag counts how long it spends in each mode; the
+         current figures per mode are datasheet values. So the duty cycle is
+         measured and the microamps are a model — a coin cell barely moves in
+         voltage for months, so a voltage trend can contradict an estimate but
+         never confirm one.</p>
+      <dl class="stats" id="power"></dl>
     </section>
 
     <section class="pane">

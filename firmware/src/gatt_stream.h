@@ -15,6 +15,7 @@
  *     Samples  f1a70002-...  notify   raw AC samples, gravity removed
  *     Control  f1a70003-...  write    start/stop
  *     Info     f1a70004-...  read     rates and units, so the host never guesses
+ *     Stats    f1a70005-...  read     duty cycle and battery, for the power model
  *
  * Wire format for one Samples notification:
  *
@@ -37,6 +38,25 @@
 #include <stdint.h>
 
 #define RFA_STREAM_PROTO_VERSION 1
+
+/*
+ * Stats characteristic, 22 bytes little-endian:
+ *
+ *   0-3    uint32  uptime, seconds
+ *   4-7    uint32  ms spent idle
+ *   8-11   uint32  ms spent bursting
+ *   12-15  uint32  ms spent streaming
+ *   16-17  uint16  bursts
+ *   18-19  uint16  motion events
+ *   20-21  uint16  battery millivolts, 0 = not measured
+ *
+ * This exists because battery life cannot be measured here. A CR2477 barely
+ * moves in voltage for months, so a trend cannot confirm a multi-year figure.
+ * Reporting the duty cycle instead turns the power number into a model whose
+ * inputs are measured on the tag, even though the per-mode currents come from
+ * the datasheet. See docs/08-power.md.
+ */
+#define RFA_STATS_LEN 22
 #define RFA_STREAM_HEADER_LEN    6
 #define RFA_STREAM_BYTES_PER_SAMPLE 6      /* int16 x 3 axes */
 
@@ -45,6 +65,15 @@
 /* Control characteristic commands. */
 #define RFA_STREAM_CMD_STOP  0x00
 #define RFA_STREAM_CMD_START 0x01
+/*
+ * 0x02 <uint16 LE mg>: set the wake-on-motion threshold.
+ *
+ * The right value depends entirely on what the tag is bolted to, and finding it
+ * by reflashing is miserable. This is not persisted - a reboot returns to
+ * CONFIG_RFA_MOTION_THRESHOLD_MG - because it is a tuning aid: find the value
+ * here, then put it in the build.
+ */
+#define RFA_STREAM_CMD_THRESHOLD 0x02
 
 /* Register the service and start the notification thread. Call after
  * bt_enable(). */

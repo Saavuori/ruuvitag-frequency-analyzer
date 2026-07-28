@@ -12,8 +12,10 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/byteorder.h>
 
+#include "battery.h"
 #include "gatt_stream.h"
 #include "lis2dh12.h"
+#include "power.h"
 #include "sampler.h"
 
 LOG_MODULE_REGISTER(rfa_gatt, LOG_LEVEL_INF);
@@ -24,6 +26,7 @@ static struct bt_uuid_128 uuid_service = BT_UUID_INIT_128(UUID_BASE(1));
 static struct bt_uuid_128 uuid_samples = BT_UUID_INIT_128(UUID_BASE(2));
 static struct bt_uuid_128 uuid_control = BT_UUID_INIT_128(UUID_BASE(3));
 static struct bt_uuid_128 uuid_info    = BT_UUID_INIT_128(UUID_BASE(4));
+static struct bt_uuid_128 uuid_stats   = BT_UUID_INIT_128(UUID_BASE(5));
 
 static struct {
 	struct bt_conn *conn;
@@ -62,6 +65,26 @@ static ssize_t read_info(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, info, sizeof(info));
 }
 
+/* See RFA_STATS_LEN in the header for the layout and why it exists. */
+static ssize_t read_stats(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+			  void *buf, uint16_t len, uint16_t offset)
+{
+	struct rfa_power_stats ps;
+	uint8_t out[RFA_STATS_LEN];
+
+	rfa_power_stats(&ps);
+
+	sys_put_le32(ps.uptime_s, &out[0]);
+	sys_put_le32(ps.idle_ms, &out[4]);
+	sys_put_le32(ps.burst_ms, &out[8]);
+	sys_put_le32(ps.active_ms, &out[12]);
+	sys_put_le16(ps.bursts, &out[16]);
+	sys_put_le16(ps.motion_events, &out[18]);
+	sys_put_le16(rfa_battery_millivolts(), &out[20]);
+
+	return bt_gatt_attr_read(conn, attr, buf, len, offset, out, sizeof(out));
+}
+
 static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 			     const void *buf, uint16_t len, uint16_t offset, uint8_t flags)
 {
@@ -73,10 +96,11 @@ static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *at
 
 	switch (((const uint8_t *)buf)[0]) {
 	case RFA_STREAM_CMD_START:
-		/* Drop whatever accumulated while nobody was listening. A host
-		 * that connects at t=0 should get samples from t=0, not a
-		 * second of history it will plot as if it were live. */
-		rfa_sampler_stream_reset();
+		/* Takes the sensor to continuous 400 Hz and then drops whatever
+		 * accumulated while nobody was listening. Both happen on the
+		 * workqueue and in that order - see streaming_fn() in power.c,
+		 * which is also why the cursor is not reset here. */
+		rfa_power_set_streaming(true);
 		gs.started = true;
 		gs.sent = 0;
 		gs.gaps = 0;
@@ -85,8 +109,21 @@ static ssize_t write_control(struct bt_conn *conn, const struct bt_gatt_attr *at
 		break;
 	case RFA_STREAM_CMD_STOP:
 		gs.started = false;
+		rfa_power_set_streaming(false);
 		LOG_INF("stream stopped after %u packets, %u gaps", gs.sent, gs.gaps);
 		break;
+	case RFA_STREAM_CMD_THRESHOLD: {
+		if (len < 3) {
+			return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+		}
+		uint16_t mg = sys_get_le16(&((const uint8_t *)buf)[1]);
+
+		if (rfa_power_set_motion_threshold(mg) < 0) {
+			return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
+		}
+		LOG_INF("motion threshold set to %u mg (not persisted)", mg);
+		break;
+	}
 	default:
 		return BT_GATT_ERR(BT_ATT_ERR_VALUE_NOT_ALLOWED);
 	}
@@ -99,6 +136,7 @@ static void ccc_changed(const struct bt_gatt_attr *attr, uint16_t value)
 	gs.subscribed = (value == BT_GATT_CCC_NOTIFY);
 	if (!gs.subscribed) {
 		gs.started = false;
+		rfa_power_set_streaming(false);
 	}
 	LOG_INF("notifications %s", gs.subscribed ? "on" : "off");
 }
@@ -115,6 +153,9 @@ BT_GATT_SERVICE_DEFINE(rfa_stream_svc,
 
 	BT_GATT_CHARACTERISTIC(&uuid_info.uuid, BT_GATT_CHRC_READ,
 			       BT_GATT_PERM_READ, read_info, NULL, NULL),
+
+	BT_GATT_CHARACTERISTIC(&uuid_stats.uuid, BT_GATT_CHRC_READ,
+			       BT_GATT_PERM_READ, read_stats, NULL, NULL),
 );
 
 /* Attribute 1 is the Samples value; notifying on the characteristic
@@ -141,6 +182,9 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	}
 	gs.subscribed = false;
 	gs.started = false;
+	/* A host that vanishes without writing STOP must not leave the sensor at
+	 * 400 Hz forever. This is the path that actually matters on a battery. */
+	rfa_power_set_streaming(false);
 }
 
 BT_CONN_CB_DEFINE(conn_callbacks) = {

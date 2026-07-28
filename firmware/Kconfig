@@ -6,15 +6,81 @@ menu "RuuviTag frequency analyzer"
 # host, where changing one costs a page reload rather than a reflash (ADR-0003).
 # A tuning knob in this file would be a number somebody has to unscrew the tag
 # from a wall to change. The only things left are how the board behaves as a
-# board.
+# board - which includes what it costs to run.
+
+config RFA_IDLE_PERIOD_S
+	int "Seconds between broadcast spectra when idle"
+	default 60
+	range 5 3600
+	help
+	  How often an idle tag wakes the accelerometer to 400 Hz, takes one
+	  transform window and queues a 0xC2 spectrum.
+
+	  This is the main battery lever. A burst is ~3 s, so 60 s is roughly a
+	  5% duty cycle on the sensor; 10 s would be ~30% and several times the
+	  idle draw. It has no effect on a connected capture, which streams
+	  continuously either way.
+
+config RFA_WAKE_ON_MOTION
+	bool "Burst on the accelerometer's activity interrupt"
+	default y
+	help
+	  Sample when something actually moves, on top of the heartbeat. Worth
+	  having on intermittent machinery, where it turns a fixed duty cycle
+	  into one that follows the equipment. On something that vibrates
+	  continuously it fires constantly and saves nothing - turn it off there
+	  and rely on the heartbeat.
+
+config RFA_MOTION_THRESHOLD_MG
+	int "Activity threshold (mg)"
+	default 256
+	range 16 2000
+	depends on RFA_WAKE_ON_MOTION
+	help
+	  Quantised to 16 mg steps at the +/-2 g full scale, and applied after a
+	  high-pass filter, so it is a threshold on change rather than on gravity.
+
+	  Note the sensor idles in 8-bit low-power mode, where one LSB is 16 mg -
+	  so this is a threshold on a coarse signal, not on the 1 mg resolution
+	  the analyser sees during a burst.
+
+	  64 mg was the first guess and it was wrong: on a bench with a steady
+	  72 mg component at 44.5 Hz the tag retriggered within ~230 ms of every
+	  burst and spent 92% of its life awake. 256 mg clears that. It is still
+	  site-specific - use command 0x02 on the Control characteristic to tune
+	  it live, watch DF5's movement counter, then set the value you found
+	  here.
+
+config RFA_MOTION_DURATION
+	int "Samples above threshold before the interrupt fires"
+	default 4
+	range 1 127
+	depends on RFA_WAKE_ON_MOTION
+	help
+	  The sensor idles at 10 Hz, so 4 samples is ~400 ms of sustained motion
+	  before a burst. Raising this rejects knocks and footsteps at the cost of
+	  latency; lowering it makes the tag jumpier.
+
+config RFA_ADV_INTERVAL_MS
+	int "Advertising interval (ms)"
+	default 2000
+	range 100 10000
+	help
+	  Longer is cheaper. The floor is set by the broadcast spectrum rather
+	  than by discovery: a 0xC2 frame takes 8 advertisements, so at 2000 ms
+	  one spectrum needs ~16 s to transmit, which still fits inside a 60 s
+	  idle period with room to spare.
 
 config RFA_STATUS_LEDS
 	bool "Status LEDs"
-	default y
+	default n
 	help
 	  Green flashes per advertisement, red solid while a host is streaming.
-	  Costs real battery - the green LED at 1.28 s intervals is comparable to
-	  the radio itself. Turn this off before any battery-life measurement.
+
+	  Off by default. The green LED at advertising cadence costs roughly what
+	  the radio does - about a tenth of the idle budget, spent on a flash
+	  nobody is watching. Turn it on for bring-up and off for anything left
+	  on a battery.
 
 config RFA_LED_BOOT_MS
 	int "Boot indication (ms)"

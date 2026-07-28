@@ -110,11 +110,20 @@ def test_scalloping_is_bounded_and_recoverable():
     assert abs(pk["hz"] - worst) < bin_hz / 4
 
 
-def test_band_covers_one_to_fifty():
+def test_default_band_covers_one_to_onefifty():
+    """The default span. 150 Hz is where the measured noise floor degrades, not
+    where Nyquist is - see the note in dsp.py."""
     res = dsp.stft(tone(10, 1000, 8192), FS, dsp.StftConfig(nfft=1024))
     assert res.freqs_hz[0] >= 1.0
-    assert res.freqs_hz[-1] <= 50.0
-    assert res.freqs_hz[-1] > 49.0
+    assert res.freqs_hz[-1] <= 150.0
+    assert res.freqs_hz[-1] > 149.0
+
+
+def test_band_can_be_widened_to_nyquist():
+    """f_hi is a request parameter, not a wall. Someone who wants the degraded
+    150-188 Hz region should be able to look at it."""
+    res = dsp.stft(tone(10, 1000, 8192), FS, dsp.StftConfig(nfft=1024, f_hi=FS / 2))
+    assert res.freqs_hz[-1] > 180.0
 
 
 def test_lost_samples_produce_a_gap_not_a_zero():

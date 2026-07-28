@@ -41,6 +41,7 @@ real trade-off in the instrument.
 | Overlap | Raises the column rate. Does not improve resolution. |
 | Window | Hann by default. Flat top when you care what something measures rather than where it is. |
 | Axis | X, Y, Z, or `\|xyz\|` — which **doubles** frequencies, and is labelled for it. |
+| Band | 1–150 Hz by default. 1–188 reaches Nyquist and the measurably noisier top end; narrower spans just zoom in. Gridlines and band-level slices follow whatever is selected. |
 | Top of scale / Range | The colour map and the trace grid. "Fit to signal" picks them from percentiles of what is actually present. |
 
 ## Honesty in the drawing

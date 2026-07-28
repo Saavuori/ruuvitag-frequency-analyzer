@@ -19,11 +19,12 @@ const el = {
   tag: $('tag'), capture: $('capture'), link: $('link'),
   nfft: $('nfft'), overlap: $('overlap'), window: $('window'), axis: $('axis'),
   span: $('span'), ref: $('ref'), range: $('range'), autoscale: $('autoscale'),
+  band: $('band'), bandlabel: $('bandlabel'), power: $('power'),
   dRes: $('d-res'), dWin: $('d-win'), dHop: $('d-hop'), dRate: $('d-rate'),
   empty: $('empty'), stack: $('stack'), lower: $('lower'),
   trace: $('trace'), fall: $('fall'), axisCanvas: $('freqaxis'), bands: $('bands'),
   marker: $('marker'), stats: $('stats'), scalekey: $('scalekey'),
-  clearhold: $('clearhold'), emptyReason: $('empty-reason'),
+  clearhold: $('clearhold'), emptyReason: $('empty-reason'), bandkey: $('bandkey'),
 };
 
 const state = {
@@ -77,7 +78,9 @@ const css = (name) => getComputedStyle(document.documentElement).getPropertyValu
 /* ---- settings ---------------------------------------------------------- */
 
 function settings() {
+  const [flo, fhi] = el.band.value.split(',').map(Number);
   return {
+    flo, fhi,
     nfft: +el.nfft.value,
     overlap: +el.overlap.value,
     window: el.window.value,
@@ -93,6 +96,7 @@ function query() {
   return new URLSearchParams({
     mac: state.mac, since: s.span, nfft: s.nfft,
     overlap: s.overlap, window: s.window, axis: s.axis,
+    flo: s.flo, fhi: s.fhi,
   }).toString();
 }
 
@@ -188,6 +192,7 @@ async function refreshSpectrum() {
   drawAll();
   showDerived(d);
   showStats(d);
+  showPower();
 }
 
 function showDerived(d) {
@@ -198,6 +203,44 @@ function showDerived(d) {
   el.dRate.title = d.fs_measured
     ? 'Measured output data rate, read from the tag'
     : 'Nominal rate - the tag has not reported a measured one, so every frequency here may be off by the oscillator error (a few percent)';
+}
+
+async function showPower() {
+  let p;
+  try {
+    p = await (await fetch('/api/tags')).json();
+  } catch (e) { return; }
+
+  const tag = (p.tags || []).find((t) => t.mac === state.mac);
+  const stats = (p.stream && p.stream.stats) || (tag && tag.stats);
+  const model = (p.stream && p.stream.power) || (tag && tag.power);
+
+  if (!stats) {
+    el.power.innerHTML = '<dt>Duty cycle</dt><dd>not reported</dd>';
+    return;
+  }
+
+  const rows = [];
+  const push = (k, v, cls) => rows.push(`<dt>${k}</dt><dd class="${cls || ''}">${v}</dd>`);
+  const pct = (x) => (100 * x).toFixed(1) + '%';
+
+  push('Battery', stats.battery_mv ? stats.battery_mv + ' mV' : 'not measured',
+       stats.battery_mv ? '' : 'bad');
+  push('Uptime', (stats.uptime_s / 3600).toFixed(2) + ' h');
+  push('Bursts', stats.bursts);
+  push('Motion events', stats.motion_events);
+  if (model) {
+    // A tag spending most of its life awake is the failure this panel exists
+    // to make visible - it is what a mis-set motion threshold looks like.
+    const busy = model.duty_idle < 0.5;
+    push('Idle', pct(model.duty_idle), busy ? 'bad' : 'ok');
+    push('Sampling', pct(model.duty_burst + model.duty_active), busy ? 'bad' : '');
+    push('Modelled draw', model.average_ua.toFixed(0) + ' µA');
+    push('Cell life (model)', model.cell_days > 365
+         ? (model.cell_days / 365).toFixed(1) + ' years'
+         : model.cell_days.toFixed(0) + ' days');
+  }
+  el.power.innerHTML = rows.join('');
 }
 
 function showStats(d) {
@@ -229,6 +272,17 @@ function showStats(d) {
 }
 
 /* ---- drawing ----------------------------------------------------------- */
+
+/* Gridline / tick spacing for a span, in a 1-2-5 sequence so labels stay
+   readable whether the band is 25 Hz wide or 190. */
+function niceStep(span) {
+  const target = span / 10;
+  const mag = Math.pow(10, Math.floor(Math.log10(target)));
+  for (const m of [1, 2, 5, 10]) {
+    if (target <= m * mag) return m * mag;
+  }
+  return 10 * mag;
+}
 
 const HZ = (d, x, w) => d.freqs[0] + (x / w) * (d.freqs[d.freqs.length - 1] - d.freqs[0]);
 const X_OF = (d, hz, w) => {
@@ -262,8 +316,9 @@ function drawTrace() {
     const y = Math.round(yOf(db)) + 0.5;
     ctx.moveTo(0, y); ctx.lineTo(w, y);
   }
-  for (const hz of [5, 10, 15, 20, 25, 30, 35, 40, 45]) {
-    if (hz < d.freqs[0] || hz > d.freqs[n - 1]) continue;
+  // Gridline spacing follows the span: 5 Hz across 50, 20 Hz across 150.
+  const gridStep = niceStep(d.freqs[n - 1] - d.freqs[0]);
+  for (let hz = Math.ceil(d.freqs[0] / gridStep) * gridStep; hz <= d.freqs[n - 1]; hz += gridStep) {
     const x = Math.round(X_OF(d, hz, w)) + 0.5;
     ctx.moveTo(x, 0); ctx.lineTo(x, h);
   }
@@ -404,7 +459,7 @@ function drawAxis() {
   ctx.textBaseline = 'top';
 
   const lo = d.freqs[0], hi = d.freqs[d.freqs.length - 1];
-  const step = (hi - lo) > 40 ? 5 : (hi - lo) > 15 ? 2 : 1;
+  const step = niceStep(hi - lo);
   const first = Math.ceil(lo / step) * step;
   for (let hz = first; hz <= hi; hz += step) {
     const x = X_OF(d, hz, w);
@@ -441,7 +496,8 @@ function drawBands() {
   const { ctx, w, h } = fit(el.bands);
   if (!d || !d.bands) return;
 
-  const series = [['1-10', css('--b1')], ['10-25', css('--b2')], ['25-50', css('--b3')]];
+  const colours = [css('--b1'), css('--b2'), css('--b3')];
+  const series = Object.keys(d.bands).map((k, i) => [k, colours[i % 3]]);
   let max = 0;
   for (const [k] of series) for (const v of d.bands[k] || []) if (v !== null && v > max) max = v;
   if (max <= 0) max = 1;
@@ -475,6 +531,9 @@ function drawBands() {
     }
     ctx.stroke();
   }
+
+  el.bandkey.innerHTML = series.map(([k], i) =>
+    `<span class="swatch b${i + 1}"></span>${k} Hz`).join(' ');
 
   ctx.font = '10px ' + css('--font-mono');
   ctx.fillStyle = css('--text-faint');
@@ -577,9 +636,13 @@ function schedule() {
   state.timer = setInterval(refreshSpectrum, period);
 }
 
-for (const c of [el.nfft, el.overlap, el.window, el.axis, el.span]) {
+for (const c of [el.nfft, el.overlap, el.window, el.axis, el.span, el.band]) {
   c.addEventListener('change', () => { resetHold(); refreshSpectrum(); });
 }
+el.band.addEventListener('change', () => {
+  const [lo, hi] = el.band.value.split(',');
+  el.bandlabel.textContent = `${lo} – ${hi} Hz`;
+});
 for (const c of [el.ref, el.range]) {
   c.addEventListener('change', () => { if (state.data) drawAll(); });
 }

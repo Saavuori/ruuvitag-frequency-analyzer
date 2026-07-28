@@ -63,6 +63,7 @@ class StreamSession:
         self._pending_gap = False
         self._fs_mhz = 0
         self.info: dict | None = None
+        self.stats_snapshot: dict | None = None
         self.connected = False
         self.error: str | None = None
         self._stop = asyncio.Event()
@@ -161,6 +162,11 @@ class StreamSession:
                                       or self.info.get("nominal_hz") or 0) * 1000))
             store.set_info(self._conn, self.mac, json.dumps(self.info))
 
+            # Read the duty cycle *before* asking for samples: what matters is
+            # the idle history since boot, and streaming immediately starts
+            # burying it under active time.
+            await self._read_stats(client)
+
             await client.start_notify(protocol.CHAR_SAMPLES, self._on_notify)
             await client.write_gatt_char(protocol.CHAR_CONTROL, protocol.CMD_START,
                                          response=True)
@@ -168,8 +174,12 @@ class StreamSession:
                   f"{protocol.effective_rate_hz(self.info):.1f} Hz")
 
             try:
+                last_stats = time.time()
                 while not self._stop.is_set() and client.is_connected:
                     await asyncio.sleep(0.5)
+                    if time.time() - last_stats > 30.0:
+                        last_stats = time.time()
+                        await self._read_stats(client)
                     # Flush a partial block if the tag went quiet, so the live
                     # view does not stall waiting for a block that will not fill.
                     if self._buf_n and self._buf_n < BLOCK_SAMPLES:
@@ -184,6 +194,16 @@ class StreamSession:
                         # Already gone. Nothing to say about it that the
                         # disconnect has not said.
                         pass
+
+    async def _read_stats(self, client) -> None:
+        try:
+            raw = await client.read_gatt_char(protocol.CHAR_STATS)
+            self.stats_snapshot = protocol.decode_stats(bytes(raw))
+            store.set_stats(self._conn, self.mac, json.dumps(self.stats_snapshot))
+        except Exception:
+            # Older firmware has no Stats characteristic. Not an error - the
+            # tag simply cannot report its duty cycle, and the UI says so.
+            self.stats_snapshot = None
 
     def stop(self) -> None:
         self._stop.set()
@@ -283,6 +303,9 @@ class Collector:
             "connected": bool(s and s.connected),
             "error": s.error if s else None,
             "info": s.info if s else None,
+            "stats": s.stats_snapshot if s else None,
+            "power": (protocol.power_model(s.stats_snapshot)
+                      if s and s.stats_snapshot else None),
             "packets": self.stats["packets"],
             "samples": self.stats["samples"],
             "gaps": self.stats["gaps"],

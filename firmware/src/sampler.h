@@ -66,6 +66,16 @@ size_t rfa_sampler_stream_read(struct rfa_sample *out, size_t max,
 void rfa_sampler_stream_reset(void);
 
 /*
+ * Drop the decimation state and the transform ring.
+ *
+ * Called when the sensor enters a burst. Samples taken in the low-power idle
+ * mode are 8-bit and arrive at 10 Hz; left in the ring they would be
+ * transformed as though they were 100 Hz data, putting a fabricated
+ * low-frequency component into the spectrum.
+ */
+void rfa_sampler_discard(void);
+
+/*
  * Latest broadcast spectrum, already in the 0xC2 dB encoding.
  *
  * Returns false when no complete transform window has accumulated yet, which is
