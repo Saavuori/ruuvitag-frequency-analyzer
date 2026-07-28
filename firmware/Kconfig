@@ -63,24 +63,31 @@ config RFA_MOTION_DURATION
 
 config RFA_ADV_INTERVAL_MS
 	int "Advertising interval (ms)"
-	default 2000
+	default 1000
 	range 100 10000
 	help
-	  Longer is cheaper. The floor is set by the broadcast spectrum rather
-	  than by discovery: a 0xC2 frame takes 8 advertisements, so at 2000 ms
-	  one spectrum needs ~16 s to transmit, which still fits inside a 60 s
-	  idle period with room to spare.
+	  Longer is cheaper, but discovery is what sets the floor in practice, not
+	  the broadcast spectrum. At the edge of range a scanner only hears a
+	  fraction of advertisements, and halving the interval halves the time to
+	  find the tag - which at 2000 ms on a weak link was long enough to look
+	  like a tag that was not there.
+
+	  A 0xC2 frame takes 8 advertisements, so at 1000 ms one spectrum needs
+	  ~8 s to transmit and still fits comfortably inside a 60 s idle period.
 
 config RFA_STATUS_LEDS
 	bool "Status LEDs"
-	default n
+	default y
 	help
 	  Green flashes per advertisement, red solid while a host is streaming.
 
-	  Off by default. The green LED at advertising cadence costs roughly what
-	  the radio does - about a tenth of the idle budget, spent on a flash
-	  nobody is watching. Turn it on for bring-up and off for anything left
-	  on a battery.
+	  On by default, which is not the cheapest choice and is deliberate. A
+	  tag on a battery in another room, with the LEDs off and out of radio
+	  range, gives you nothing at all to look at - there is no way to tell a
+	  flat cell from a crash from a wall in the way. The flash costs roughly
+	  15-20 uA and buys "walk up to it and see that it is alive".
+
+	  Turn it off once a deployment is proven and you trust the link.
 
 config RFA_LED_BOOT_MS
 	int "Boot indication (ms)"

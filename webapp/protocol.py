@@ -281,8 +281,18 @@ def decode_info(data: bytes) -> dict:
 # the tag counts itself) and half taken on trust (these). Anything derived from
 # them is labelled a model, never a measurement.
 MODE_CURRENT_UA = {
-    # LIS2DH12 low-power 10 Hz + nRF52 sleep + advertising at 2 s.
-    "idle": 18.0,
+    # LIS2DH12 low-power 10 Hz + nRF52 sleep + advertising at 1 s and +4 dBm,
+    # with the status LED enabled. Roughly:
+    #
+    #     sensor low-power + CPU sleep     ~5 uA
+    #     advertising, 1 s, +4 dBm        ~29 uA
+    #     green LED, 10 ms per advert     ~20 uA
+    #
+    # Three times the 18 uA of the 2 s / 0 dBm / LEDs-off build, and chosen
+    # deliberately: a tag on a washing machine that cannot be heard or seen
+    # reports nothing at all, however little it draws. Drop the LED and halve
+    # the advertising rate once a deployment is proven.
+    "idle": 54.0,
     # LIS2DH12 400 Hz high-resolution + CPU polling the FIFO at 40 ms.
     "burst": 180.0,
     # As burst, plus a live BLE connection pushing ~2.4 kB/s.

@@ -23,13 +23,16 @@ Treat every figure below as an estimate with a measured denominator.
 
 | Mode | Accelerometer | CPU | Radio | Modelled |
 |---|---|---|---|---|
-| `IDLE` | low-power 10 Hz, 8-bit, INT1 armed | asleep, ~5 wakes/s | advertising, 2 s | ~18 µA |
+| `IDLE` | low-power 10 Hz, 8-bit, INT1 armed | asleep, ~5 wakes/s | advertising, 1 s, +4 dBm | ~54 µA |
 | `BURST` | 400 Hz, 12-bit high-res | FIFO poll 40 ms | unchanged | ~180 µA |
 | `ACTIVE` | 400 Hz, 12-bit high-res | FIFO poll 40 ms | GATT, ~2.4 kB/s | ~3500 µA |
 
 A burst is one transform window plus settling — about 2.7 s in practice. At the
 default 60 s idle period that is a ~5% duty cycle, and the model puts a quiet
-tag near **25 µA**, which is years rather than months.
+tag near **60 µA** — about 1.5 years on a CR2477. With the cheapest radio and
+LED settings the same duty cycle models near 30 µA and roughly three years; see
+"Reachability beats efficiency" below for why the expensive ones are the
+defaults.
 
 `ACTIVE` is not a battery mode and is not budgeted as one. The tag is a bench
 instrument while a host is streaming.
@@ -40,11 +43,37 @@ instrument while a host is streaming.
    ~2.7 s, so 10 s would be ~30% duty and several times the draw.
 2. **`RFA_MOTION_THRESHOLD_MG`** (default 256). Set this too low and the tag
    never reaches idle — see below. This is the one that actually bit us.
-3. **`RFA_STATUS_LEDS`** (default **off**). The green flash at advertising
-   cadence costs roughly what the radio does.
-4. **`RFA_ADV_INTERVAL_MS`** (default 2000). Longer is cheaper. The floor is the
-   broadcast spectrum, not discovery: a 0xC2 frame is 8 advertisements, so
-   2000 ms means ~16 s per spectrum, which still fits inside a 60 s period.
+3. **`RFA_STATUS_LEDS`** (default **on**). ~15-20 µA for a flash you can walk
+   up to and see. Off is cheaper and was the original default; see below.
+4. **`RFA_ADV_INTERVAL_MS`** (default 1000) and **TX power** (`+4 dBm`).
+   Together these cost roughly 25 µA over the cheapest settings and are the
+   difference between a tag you can reach and one you cannot.
+
+## Reachability beats efficiency
+
+The first field deployment — a tag on a coin cell bolted to a washing machine —
+could not be heard at all. 115 s of scanning: **3801 advertisements from other
+devices, zero from ours.** On the bench beforehand it had been the weakest
+device in the room at −94 dBm.
+
+Three settings had been chosen for battery life and every one of them worked
+against being found:
+
+| Setting | Was | Now | Why |
+|---|---|---|---|
+| TX power | 0 dBm | **+4 dBm** | nRF52832 maximum; ~1.6× range |
+| Advertising | 2000 ms | **1000 ms** | halves time to find the tag |
+| Status LED | off | **on** | a tag with no light and no radio cannot be triaged at all |
+
+That takes modelled idle draw from ~30 µA to ~55 µA — still over a year on a
+CR2477, and worth it. **A tag nobody can hear reports nothing, however
+efficient it is.** Turn them back down once a deployment is proven and the link
+is trusted.
+
+Note also that a washing machine will exceed the 256 mg motion threshold for its
+whole cycle, so the tag stays awake at ~180 µA for the duration rather than
+idling. That is arguably what you want — spectra while it runs — but it is not
+the idle figure.
 
 Already handled by the board and not worth revisiting: the DC/DC regulator is
 enabled in the devicetree, and the 32 kHz crystal is in use rather than the RC.
