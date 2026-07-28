@@ -20,6 +20,7 @@ const el = {
   nfft: $('nfft'), overlap: $('overlap'), window: $('window'), axis: $('axis'),
   span: $('span'), ref: $('ref'), range: $('range'), autoscale: $('autoscale'),
   band: $('band'), bandlabel: $('bandlabel'), power: $('power'),
+  refVal: $('ref-val'), rangeVal: $('range-val'),
   dRes: $('d-res'), dWin: $('d-win'), dHop: $('d-hop'), dRate: $('d-rate'),
   empty: $('empty'), stack: $('stack'), lower: $('lower'),
   trace: $('trace'), fall: $('fall'), axisCanvas: $('freqaxis'), bands: $('bands'),
@@ -663,16 +664,15 @@ function autoscale() {
   const q = (p) => all[Math.min(all.length - 1, Math.floor(p * all.length))];
 
   // Top just above the loudest thing present, floor a little under the bulk of
-  // it. Clamped to the options the selects offer so the controls keep telling
-  // the truth about what is displayed.
-  const wantRef = Math.ceil((q(0.999) + 3) / 20) * 20;
-  const wantRange = Math.ceil((wantRef - q(0.02)) / 20) * 20;
-  const pick = (sel, v) => {
-    const opts = [...sel.options].map((o) => +o.value);
-    sel.value = String(opts.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a)));
-  };
-  pick(el.ref, wantRef);
-  pick(el.range, wantRange);
+  // it. The sliders are continuous, so these land exactly rather than snapping
+  // to whichever preset happened to be nearest.
+  const clamp = (el_, v) => Math.min(+el_.max, Math.max(+el_.min, Math.round(v)));
+  const wantRef = clamp(el.ref, q(0.999) + 3);
+  const wantRange = clamp(el.range, Math.max(20, wantRef - q(0.02)));
+
+  el.ref.value = String(wantRef);
+  el.range.value = String(Math.round(wantRange / 5) * 5);   // slider step is 5
+  showScaleValues();
   drawAll();
 }
 
@@ -698,9 +698,21 @@ el.band.addEventListener('change', () => {
   const [lo, hi] = el.band.value.split(',');
   el.bandlabel.textContent = `${lo} – ${hi} Hz`;
 });
-for (const c of [el.ref, el.range]) {
-  c.addEventListener('change', () => { if (state.data) drawAll(); });
+function showScaleValues() {
+  el.refVal.textContent = `${el.ref.value} dB`;
+  el.rangeVal.textContent = `${el.range.value} dB`;
 }
+
+for (const c of [el.ref, el.range]) {
+  // 'input', not 'change': the scale should follow the thumb while dragging.
+  // Redrawing is entirely client-side - no request is made - so this is cheap
+  // enough to do on every pixel of travel.
+  c.addEventListener('input', () => {
+    showScaleValues();
+    if (state.data) drawAll();
+  });
+}
+showScaleValues();
 el.tag.addEventListener('change', () => {
   state.mac = el.tag.value;
   resetHold();

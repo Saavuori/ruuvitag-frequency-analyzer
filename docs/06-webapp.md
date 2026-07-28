@@ -42,7 +42,13 @@ real trade-off in the instrument.
 | Window | Hann by default. Flat top when you care what something measures rather than where it is. |
 | Axis | X, Y, Z, or `\|xyz\|` — which **doubles** frequencies, and is labelled for it. |
 | Band | 1–150 Hz by default. 1–188 reaches Nyquist and the measurably noisier top end; narrower spans just zoom in. Gridlines and band-level slices follow whatever is selected. |
-| Top of scale / Range | The colour map and the trace grid. "Fit to signal" picks them from percentiles of what is actually present. |
+| Top of scale / Range | Continuous sliders, live while dragging. They set the colour map and the trace grid together. |
+
+"Fit to signal" reads percentiles of what is actually present and sets both.
+Sliders rather than presets because the value that makes a signal legible is
+continuous: with dropdown steps, autoscale had to snap to whichever preset was
+nearest and throw away the answer it had just computed. On real data it now
+lands on values like 98 dB that no sensible preset list would have contained.
 
 ## Honesty in the drawing
 
