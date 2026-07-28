@@ -151,13 +151,27 @@ async function refreshTags() {
 
   const cur = tags.find((t) => t.mac === state.mac);
   el.capture.disabled = !cur || !cur.streamable;
+
+  /*
+   * Three states, not two. A capture that has been *requested* but has not
+   * connected is neither running nor stopped, and showing it as "Start
+   * capture" makes a failing connection look like a button that does nothing -
+   * which is exactly how it was reported.
+   */
+  const requested = payload.stream && payload.stream.mac === state.mac;
   const on = state.streaming && state.streaming === state.mac;
   el.capture.classList.toggle('on', !!on);
-  el.capture.textContent = on ? 'Stop capture' : 'Start capture';
+  el.capture.textContent = on ? 'Stop capture'
+    : requested ? 'Connecting…' : 'Start capture';
 
   if (payload.stream && payload.stream.error) {
-    el.link.textContent = payload.stream.error;
+    el.link.textContent = requested
+      ? `cannot reach ${state.mac}: ${payload.stream.error}`
+      : payload.stream.error;
     el.link.className = 'link bad';
+  } else if (requested && !on) {
+    el.link.textContent = `connecting to ${state.mac}…`;
+    el.link.className = 'link';
   } else if (on) {
     const info = payload.stream.info || {};
     const hz = info.measured_hz || info.nominal_hz;
