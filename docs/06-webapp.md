@@ -61,6 +61,30 @@ much that component is wandering — something a single frame cannot show.
 **"None above noise" is a result.** When nothing clears the prominence test the
 readout says so rather than naming the tallest noise bin.
 
+## RPM, and why it is shown three ways
+
+Rotating machinery is specified in RPM, so hovering shows it — but a peak is
+only the shaft speed if it is the **1×** component, and plenty of machines put
+their largest peak elsewhere. A fan's loudest line is usually blade-pass (shaft
+× blade count); misalignment shows at 2×; a belt runs at its own rate entirely.
+
+So the readout gives 1× and the two sub-harmonic readings and lets you decide
+which is the shaft:
+
+```
+30.79 Hz      1847 RPM at 1×
+50.4 dB (0.331 mg)   hold 92.7 dB
+if 2× 924    if 3× 616 RPM
+```
+
+Printing a single confident RPM would be wrong by an integer factor often enough
+to matter. The Capture health panel does the same for the auto-detected peak,
+and shows nothing at all when no tone clears the prominence test.
+
+A practical way to resolve the ambiguity: if the real shaft rate is present at
+all, you will usually see peaks at both f and 2f. The lowest one that has
+harmonics above it is the 1×.
+
 ## Offline by construction
 
 No CDN, no external fonts, no cloud, no account. The charts are hand-drawn onto

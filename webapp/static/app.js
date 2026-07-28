@@ -132,7 +132,20 @@ async function refreshTags() {
     el.tag.disabled = true;
   } else {
     el.tag.disabled = false;
-    state.mac = tags.some((t) => t.mac === want) ? want : tags[0].mac;
+    /*
+     * Selection priority, in order: whatever was already chosen, then the tag
+     * actually being captured from, then any tag that can be captured from,
+     * then the first one.
+     *
+     * Not simply tags[0]: the list is ordered by last-seen, and a stock
+     * RuuviTag advertising every 1.2 s outranks ours at 2 s with a weaker
+     * signal. Picking the top of that list silently switched the view away
+     * from the tag mid-capture.
+     */
+    state.mac =
+      (tags.some((t) => t.mac === want) && want) ||
+      (state.streaming && tags.some((t) => t.mac === state.streaming) && state.streaming) ||
+      (tags.find((t) => t.streamable) || tags[0]).mac;
     el.tag.value = state.mac;
   }
 
@@ -254,6 +267,9 @@ function showStats(d) {
   push('Windows dropped', d.lost_windows, d.lost_windows ? 'bad' : 'ok');
   if (d.peak) {
     push('Strongest tone', d.peak.hz.toFixed(2) + ' Hz');
+    push('If 1× shaft', rpm(d.peak.hz).toFixed(0) + ' RPM');
+    push('If 2× / 3×', (rpm(d.peak.hz) / 2).toFixed(0) + ' / ' +
+                       (rpm(d.peak.hz) / 3).toFixed(0) + ' RPM');
     push('Its amplitude', (d.peak.amplitude_ug / 1000).toFixed(2) + ' mg');
   } else {
     push('Strongest tone', 'none above noise');
@@ -282,6 +298,22 @@ function niceStep(span) {
     if (target <= m * mag) return m * mag;
   }
   return 10 * mag;
+}
+
+/*
+ * Rotating machinery is specified in RPM, so show it - but a peak is only the
+ * shaft speed if it is the 1x component, and plenty of things put their largest
+ * peak somewhere else. A fan's loudest line is usually blade-pass (shaft x
+ * blade count); misalignment shows at 2x; a belt runs at its own rate entirely.
+ *
+ * So the readout gives 1x and the first two sub-harmonic readings, and lets the
+ * operator decide which one is the shaft. Printing a single confident RPM would
+ * be wrong by an integer factor often enough to matter.
+ */
+const rpm = (hz) => hz * 60;
+
+function rpmCandidates(hz) {
+  return [1, 2, 3].map((n) => ({ order: n, rpm: rpm(hz) / n }));
 }
 
 const HZ = (d, x, w) => d.freqs[0] + (x / w) * (d.freqs[d.freqs.length - 1] - d.freqs[0]);
@@ -561,10 +593,19 @@ function onMove(ev) {
   const v = live ? live[i] : null;
   const hold = state.hold ? state.hold[i] : null;
 
-  el.marker.textContent =
-    `${d.freqs[i].toFixed(2)} Hz   ` +
-    `${v === null || v === undefined ? '  —  ' : v.toFixed(1) + ' dB'}   ` +
-    `hold ${hold !== null && isFinite(hold) ? hold.toFixed(1) + ' dB' : '—'}`;
+  const f = d.freqs[i];
+  const amp = (v === null || v === undefined) ? null : Math.pow(10, v / 20) / 1000;
+  const cand = rpmCandidates(f);
+
+  const level = (v === null || v === undefined)
+    ? '   —   '
+    : `${v.toFixed(1)} dB (${amp.toFixed(3)} mg)`;
+
+  el.marker.textContent = [
+    `${f.toFixed(2)} Hz      ${cand[0].rpm.toFixed(0)} RPM at 1×`,
+    `${level}   hold ${hold !== null && isFinite(hold) ? hold.toFixed(1) + ' dB' : '—'}`,
+    `if 2× ${cand[1].rpm.toFixed(0)}    if 3× ${cand[2].rpm.toFixed(0)} RPM`,
+  ].join('\n');
   el.marker.classList.add('on');
 
   drawTrace();
