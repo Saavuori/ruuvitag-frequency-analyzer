@@ -173,6 +173,23 @@ miserable. `tools/tune_motion.py` drives it.
 17 samples per notification (MTU negotiated below the 247 requested)
 ```
 
+### Connection parameters, and the 420 ms trap
+
+Zephyr's default peripheral supervision timeout is `CONFIG_BT_PERIPHERAL_PREF_TIMEOUT=42`
+— **420 ms**. At the 30–50 ms connection interval it also defaults to, that
+declares the link dead after roughly 8 to 14 consecutively missed connection
+events.
+
+Indoors on a bench that is invisible. On a tag bolted to a steel appliance it is
+one ordinary fade, and it presents as a connection that "intermittently breaks"
+while the tag itself is provably fine — uptime climbing, no reboot, battery
+steady.
+
+This build sets **6 s** (`=600`), which rides out roughly 120–200 missed events.
+The cost is that a genuinely dead link takes 6 s to notice rather than 0.4 s,
+which matters far less: the collector reconnects either way, and a dropped
+capture leaves a hole in the record that a slower timeout would not have made.
+
 ### Advertising while connected
 
 **Advertising stops for the duration of a capture**, so DF5 and `0xC2` both

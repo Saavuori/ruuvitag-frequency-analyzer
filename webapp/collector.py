@@ -38,7 +38,9 @@ from . import protocol, store
 # however long the block is.
 BLOCK_SAMPLES = 400
 
-RECONNECT_DELAY_S = 3.0
+# Short, because every second here is a hole in the capture. Long enough that a
+# tag which is genuinely gone is not hammered continuously.
+RECONNECT_DELAY_S = 1.5
 
 
 class StreamSession:
