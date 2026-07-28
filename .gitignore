@@ -1,0 +1,26 @@
+# Build
+build/
+build-*/
+twister-out/
+.west/
+*.hex
+*.elf
+*.map
+*.o
+*.pdb
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Captured data. Raw blocks are ~2.4 kB/s per streaming tag; a day of capture
+# is ~200 MB and none of it belongs in git.
+data/
+*.db
+*.db-wal
+*.db-shm
+*.csv
+
+.DS_Store

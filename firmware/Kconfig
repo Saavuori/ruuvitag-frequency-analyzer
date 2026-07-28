@@ -1,0 +1,34 @@
+menu "RuuviTag frequency analyzer"
+
+# There are deliberately no signal-processing options here.
+#
+# Transform length, overlap, window function and reference level all live on the
+# host, where changing one costs a page reload rather than a reflash (ADR-0003).
+# A tuning knob in this file would be a number somebody has to unscrew the tag
+# from a wall to change. The only things left are how the board behaves as a
+# board.
+
+config RFA_STATUS_LEDS
+	bool "Status LEDs"
+	default y
+	help
+	  Green flashes per advertisement, red solid while a host is streaming.
+	  Costs real battery - the green LED at 1.28 s intervals is comparable to
+	  the radio itself. Turn this off before any battery-life measurement.
+
+config RFA_LED_BOOT_MS
+	int "Boot indication (ms)"
+	default 200
+	depends on RFA_STATUS_LEDS
+
+config RFA_LED_FLASH_MS
+	int "Advertisement flash (ms)"
+	default 10
+	depends on RFA_STATUS_LEDS
+	help
+	  Short enough to be cheap, long enough to see. Below about 5 ms the
+	  flash is hard to catch by eye.
+
+endmenu
+
+source "Kconfig.zephyr"

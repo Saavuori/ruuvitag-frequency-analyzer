@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RuuviTag spectrum analyzer</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="ident">
+    <span class="mark" aria-hidden="true"></span>
+    <h1>Spectrum analyzer</h1>
+    <span class="band">1 – 50 Hz</span>
+  </div>
+
+  <div class="ident-controls">
+    <label class="field">
+      <span>Tag</span>
+      <select id="tag"></select>
+    </label>
+    <button id="capture" class="capture" type="button" disabled>Start capture</button>
+  </div>
+
+  <output id="link" class="link" aria-live="polite">Looking for tags…</output>
+</header>
+
+<section class="rail" aria-label="Analysis settings">
+  <div class="settings">
+    <label class="field">
+      <span>FFT</span>
+      <select id="nfft">
+        <option value="256">256</option>
+        <option value="512">512</option>
+        <option value="1024" selected>1024</option>
+        <option value="2048">2048</option>
+        <option value="4096">4096</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Overlap</span>
+      <select id="overlap">
+        <option value="0">0%</option>
+        <option value="0.5">50%</option>
+        <option value="0.75" selected>75%</option>
+        <option value="0.875">87.5%</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Window</span>
+      <select id="window">
+        <option value="hann" selected>Hann</option>
+        <option value="hamming">Hamming</option>
+        <option value="blackman">Blackman</option>
+        <option value="flattop">Flat top</option>
+        <option value="rect">None</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Axis</span>
+      <select id="axis">
+        <option value="z" selected>Z</option>
+        <option value="x">X</option>
+        <option value="y">Y</option>
+        <option value="mag">|xyz|</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Span</span>
+      <select id="span">
+        <option value="60">1 min</option>
+        <option value="300" selected>5 min</option>
+        <option value="900">15 min</option>
+        <option value="3600">1 hour</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Top of scale</span>
+      <select id="ref">
+        <option value="80">80 dB</option>
+        <option value="100" selected>100 dB</option>
+        <option value="120">120 dB</option>
+      </select>
+    </label>
+    <label class="field">
+      <span>Range</span>
+      <select id="range">
+        <option value="40">40 dB</option>
+        <option value="60" selected>60 dB</option>
+        <option value="90">90 dB</option>
+      </select>
+    </label>
+    <button id="autoscale" class="ghost" type="button">Fit to signal</button>
+  </div>
+
+  <!-- The settings on the left buy the numbers on the right. Resolution and
+       window length are the same fact, so showing them apart would hide the
+       only trade-off in the instrument. -->
+  <dl class="derived" id="derived">
+    <div><dt>Resolution</dt><dd id="d-res">—</dd></div>
+    <div><dt>Window</dt><dd id="d-win">—</dd></div>
+    <div><dt>Refresh</dt><dd id="d-hop">—</dd></div>
+    <div><dt>Rate</dt><dd id="d-rate">—</dd></div>
+  </dl>
+</section>
+
+<main>
+  <div class="empty" id="empty">
+    <h2>Nothing to analyse yet</h2>
+    <p id="empty-reason">Pick a tag above and start capture. The tag must be running
+       this project's firmware — a stock RuuviTag sends one gravity reading per
+       advertisement, which is about 0.4 Hz and cannot show this band at all.</p>
+    <p class="alt">No hardware to hand? <code>python tools/fake_source.py --duration 280</code>
+       writes a synthetic scene with tones at 3.1, 12.5 and 33 Hz.</p>
+  </div>
+
+  <!-- One frequency axis, two views of it. The trace is now; the waterfall is
+       the last few minutes of now. Sharing the axis is what lets you find a
+       peak above and follow it down through its history. -->
+  <div class="stack" id="stack" hidden>
+    <div class="pane pane-trace">
+      <div class="pane-head">
+        <h2>Spectrum</h2>
+        <div class="key">
+          <span class="swatch live"></span>live
+          <span class="swatch hold"></span>max hold
+          <span class="swatch ghosttrace"></span>recent
+          <button id="clearhold" class="ghost small" type="button">Reset hold</button>
+        </div>
+      </div>
+      <canvas id="trace" height="240"></canvas>
+    </div>
+
+    <div class="pane pane-fall">
+      <div class="pane-head">
+        <h2>History</h2>
+        <div class="key" id="scalekey"></div>
+      </div>
+      <canvas id="fall" height="320"></canvas>
+      <canvas id="freqaxis" height="26" class="axis"></canvas>
+    </div>
+
+    <output id="marker" class="marker" aria-live="off"></output>
+  </div>
+
+  <div class="grid" id="lower" hidden>
+    <section class="pane">
+      <div class="pane-head"><h2>Band levels</h2></div>
+      <p class="note">RMS amplitude in each band over the span. Components add in
+         power, so a band reads the total energy in it, not its loudest bin.</p>
+      <canvas id="bands" height="150"></canvas>
+      <div class="key">
+        <span class="swatch b1"></span>1–10 Hz
+        <span class="swatch b2"></span>10–25 Hz
+        <span class="swatch b3"></span>25–50 Hz
+      </div>
+    </section>
+
+    <section class="pane">
+      <div class="pane-head"><h2>Capture health</h2></div>
+      <p class="note">A window containing lost samples is drawn as a gap, never
+         filled in. Zero-filling a dropout adds a click with energy at every
+         frequency — the artefact most easily mistaken for a real event.</p>
+      <dl class="stats" id="stats"></dl>
+    </section>
+  </div>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

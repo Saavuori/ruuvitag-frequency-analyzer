@@ -1,0 +1,276 @@
+/*
+ * Bench instrument, not a dashboard.
+ *
+ * The ground is blue-slate rather than black, and the signal colours are warm:
+ * amber for the live trace, cyan for max hold, and an inferno ramp for the
+ * waterfall. Cool instrument, warm signal - so the eye separates "what the
+ * tool is" from "what it found" without reading a legend.
+ *
+ * Bahnschrift is Windows' DIN 1451, the lettering standard used on German
+ * machine panels and test gear. It is the vernacular of the subject, and it is
+ * already on the machine - which matters, because this UI must work with no
+ * network at all.
+ */
+
+:root {
+  --ground:    #101620;
+  --panel:     #161d29;
+  --panel-2:   #1b2431;
+  --rule:      #26313f;
+  --rule-soft: #1e2735;
+
+  --text:      #dfe6ef;
+  --text-dim:  #8394a8;
+  --text-faint:#5c6b7e;
+
+  --live:      #ffb44d;   /* amber: the current trace */
+  --hold:      #5fd4e8;   /* cyan: max hold, marker */
+  --alarm:     #ff5f8f;   /* magenta: loss, gaps, errors */
+  --ok:        #6ee7a8;
+
+  --b1:        #ffb44d;
+  --b2:        #5fd4e8;
+  --b3:        #b98cff;
+
+  --font-display: "Bahnschrift", "DIN Alternate", "Roboto Condensed",
+                  "Arial Narrow", system-ui, sans-serif;
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Cascadia Mono", "SF Mono", "JetBrains Mono", ui-monospace,
+               Consolas, "Liberation Mono", monospace;
+
+  --pad: 16px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Numbers that update in place must not shift width, or the eye reads the
+   jitter as change in the value. */
+.mono, dd, .marker, .stats dd, .derived dd {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+h1, h2, .field > span, .derived dt, .stats dt, .key, .capture, .ghost {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ---- header ---------------------------------------------------------- */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pad);
+  padding: 12px var(--pad);
+  background: var(--panel);
+  border-bottom: 1px solid var(--rule);
+}
+
+.ident { display: flex; align-items: center; gap: 10px; }
+
+.ident h1 { font-size: 15px; margin: 0; letter-spacing: 0.12em; }
+
+/* Three ticks of a falling spectrum. Small enough to read as a mark. */
+.mark {
+  width: 16px; height: 16px;
+  background:
+    linear-gradient(var(--live), var(--live)) 0 100% / 3px 100% no-repeat,
+    linear-gradient(var(--live), var(--live)) 6px 100% / 3px 60% no-repeat,
+    linear-gradient(var(--hold), var(--hold)) 12px 100% / 3px 85% no-repeat;
+}
+
+.band {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--live);
+  border: 1px solid color-mix(in srgb, var(--live) 35%, transparent);
+  border-radius: 2px;
+  padding: 1px 6px;
+}
+
+.ident-controls { display: flex; align-items: flex-end; gap: 10px; }
+
+.link {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.link.on   { color: var(--ok); }
+.link.bad  { color: var(--alarm); }
+
+/* ---- controls -------------------------------------------------------- */
+
+.rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--pad);
+  padding: 10px var(--pad);
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.settings { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+
+.field { display: flex; flex-direction: column; gap: 3px; }
+.field > span { font-size: 10px; color: var(--text-faint); }
+
+select, button {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 5px 8px;
+}
+select { font-family: var(--font-mono); }
+select:hover, button:hover { border-color: var(--text-faint); }
+
+:focus-visible {
+  outline: 2px solid var(--hold);
+  outline-offset: 1px;
+}
+
+.capture {
+  border-color: color-mix(in srgb, var(--live) 45%, transparent);
+  color: var(--live);
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.capture[disabled] { color: var(--text-faint); border-color: var(--rule); cursor: default; }
+.capture.on { background: var(--live); color: var(--ground); border-color: var(--live); }
+
+.ghost { color: var(--text-dim); cursor: pointer; }
+.ghost.small { font-size: 10px; padding: 3px 7px; }
+
+.derived {
+  display: flex;
+  gap: 18px;
+  margin: 0 0 0 auto;
+  padding: 0;
+}
+.derived div { display: flex; flex-direction: column; }
+.derived dt { font-size: 10px; color: var(--text-faint); }
+.derived dd { margin: 0; font-size: 13px; color: var(--text); }
+
+/* ---- layout ---------------------------------------------------------- */
+
+main { padding: var(--pad); display: flex; flex-direction: column; gap: var(--pad); }
+
+.pane {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 10px 12px 12px;
+}
+
+.pane-head {
+  display: flex; align-items: baseline; gap: 12px;
+  margin-bottom: 8px;
+}
+.pane-head h2 { font-size: 11px; margin: 0; color: var(--text-dim); }
+
+.note { margin: 0 0 10px; font-size: 12px; color: var(--text-faint); max-width: 62ch; }
+
+.key {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 10px; color: var(--text-faint);
+}
+.swatch { width: 14px; height: 3px; display: inline-block; }
+.swatch.live { background: var(--live); }
+.swatch.hold { background: var(--hold); }
+.swatch.ghosttrace { background: color-mix(in srgb, var(--live) 30%, transparent); }
+.swatch.b1 { background: var(--b1); }
+.swatch.b2 { background: var(--b2); }
+.swatch.b3 { background: var(--b3); }
+
+/* The trace and the waterfall are one instrument sharing one frequency axis,
+   so they are one bordered block with a hairline between, not two panes. */
+.stack {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  position: relative;
+}
+.stack .pane { background: none; border: 0; border-radius: 0; padding: 10px 12px 0; }
+.pane-fall { padding-bottom: 6px !important; }
+.pane-trace { border-bottom: 1px solid var(--rule-soft) !important; padding-bottom: 8px !important; }
+
+canvas { display: block; width: 100%; cursor: crosshair; }
+canvas.axis { height: 26px; cursor: default; }
+
+.marker {
+  position: absolute;
+  top: 8px; right: 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--hold);
+  background: color-mix(in srgb, var(--ground) 88%, transparent);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 3px 8px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms;
+  white-space: pre;
+}
+.marker.on { opacity: 1; }
+
+.grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: var(--pad);
+}
+
+.stats { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin: 0; }
+.stats dt { font-size: 10px; color: var(--text-faint); align-self: center; }
+.stats dd { margin: 0; font-size: 13px; text-align: right; }
+.stats dd.bad { color: var(--alarm); }
+.stats dd.ok  { color: var(--ok); }
+
+/* ---- empty state ----------------------------------------------------- */
+
+.empty {
+  border: 1px dashed var(--rule);
+  border-radius: 3px;
+  padding: 40px var(--pad);
+  text-align: center;
+  color: var(--text-dim);
+}
+.empty h2 { font-size: 13px; color: var(--text); margin: 0 0 10px; }
+.empty p { margin: 0 auto 8px; max-width: 58ch; font-size: 13px; }
+.empty .alt { color: var(--text-faint); }
+.empty code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--live);
+  background: var(--ground);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 1px 5px;
+}
+
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+  .derived { margin-left: 0; width: 100%; flex-wrap: wrap; }
+  .link { margin-left: 0; width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marker { transition: none; }
+}

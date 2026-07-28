@@ -1,0 +1,16 @@
+cmake_minimum_required(VERSION 3.20.0)
+
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(ruuvitag_frequency_analyzer)
+
+target_sources(app PRIVATE
+  src/main.c
+  src/sampler.c
+  src/lis2dh12.c
+  src/gatt_stream.c
+  src/env.c
+  src/leds.c
+  src/fft.c
+  src/adv_df5.c
+  src/adv_spectrum.c
+)
