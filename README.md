@@ -55,11 +55,15 @@ protect it.
 
 ![A real capture from the tag](docs/images/analyzer-live.png)
 
-*The same view on real data — a tag on a desk. The bright band at the top of the
-history is something knocking it; the horizontal streaks are brief broadband
-events; the trace shows the low-frequency rolloff of ordinary structural
-vibration, with max-hold in cyan above the live trace. Not a tidy signal, which
-is what real ones look like.*
+*The same view on real data. The sharp line at **45.6 Hz** is a machine running
+near the tag — 27.8 mg, prominence 1484, spectral flatness 0.107, and steady for
+the full four minutes of history. Hover it and the readout gives **2735 RPM at
+1×**.*
+
+*Look for the fainter line at ~91 Hz: that is its 2nd harmonic, and it is the
+evidence that 45.6 Hz is the fundamental rather than itself a harmonic of
+something slower. This is why the RPM readout offers 1×, 2× and 3× rather than
+one confident number — the lowest peak with harmonics above it is the shaft.*
 
 **The measured rate is 5.1% below nominal.** That is not a defect, it is what an
 RC oscillator does, and it is why the tag reports its own measured ODR and the
