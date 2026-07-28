@@ -9,12 +9,28 @@ browser shows a live spectrum and a scrolling waterfall.
 
 ![band](https://img.shields.io/badge/band-1--150%20Hz-orange) ![rate](https://img.shields.io/badge/sample%20rate-400%20Hz-blue) ![resolution](https://img.shields.io/badge/resolution-0.39%20Hz-blue)
 
+![The analyzer capturing from a tag](docs/images/analyzer-app.png)
+
+*The whole instrument, capturing live. Live spectrum above, scrolling history
+below, sharing one frequency axis — find a peak in the trace and follow it
+straight down to see how long it has been there. The controls buy the numbers on
+their right: 0.370 Hz resolution and a 2.70 s window are the same fact.*
+
+*Three details worth spotting. The **43.23 Hz** tone reads **2594 RPM at 1×** in
+the health panel, with the 2× and 3× readings beside it. The dark horizontal
+band across the waterfall is nine transform windows that contained lost samples,
+drawn as a gap rather than filled in. And the Power panel is red — **95.2%
+sampling, 10 days** — because a connected capture runs the tag flat out at
+~3.3 mA. Idle it models near 60 µA and over a year; see
+[`docs/08-power.md`](docs/08-power.md).*
+
+---
+
 ![The analyzer showing three tones](docs/images/analyzer-synthetic.png)
 
-*Live spectrum above, scrolling history below, sharing one frequency axis — find
-a peak in the trace and follow it straight down to see how long it has been
-there. Three tones at 3.1, 12.5 and 33 Hz. Reproduce this exact picture with no
-hardware at all:* `python tools/fake_source.py --duration 280`
+*The same view on a synthetic scene — tones at 3.1, 12.5 and 33 Hz. Reproduce
+this exact picture with no hardware at all:*
+`python tools/fake_source.py --duration 280`
 
 ---
 

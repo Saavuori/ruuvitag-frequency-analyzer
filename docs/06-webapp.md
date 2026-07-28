@@ -102,6 +102,20 @@ standard used on machine panels and test equipment — falling back through
 condensed grotesques to the system UI face. It is already on the machine, which
 is the point.
 
+## Regenerating the README screenshots
+
+The plot figures are the app's own canvases, exported with `toDataURL` — pixel
+exact, not a photograph of a screen. The full-window shot is Chrome rendering
+the page offscreen:
+
+```bash
+chrome --headless=new --screenshot=docs/images/analyzer-app.png        --window-size=1800,1560 --virtual-time-budget=25000 --hide-scrollbars        http://localhost:8765
+```
+
+Headless rather than a desktop capture on purpose: a screen grab picks up
+whatever window happens to overlap, which on the first attempt included a
+bookmarks bar that had no business in a repository.
+
 ## API
 
 | Endpoint | Returns |
