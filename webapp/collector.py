@@ -158,11 +158,7 @@ class StreamSession:
             self.connected = True
             self.error = None
 
-            raw = await client.read_gatt_char(protocol.CHAR_INFO)
-            self.info = protocol.decode_info(bytes(raw))
-            self._fs_mhz = int(round((self.info.get("measured_hz")
-                                      or self.info.get("nominal_hz") or 0) * 1000))
-            store.set_info(self._conn, self.mac, json.dumps(self.info))
+            await self._read_info(client)
 
             # Read the duty cycle *before* asking for samples: what matters is
             # the idle history since boot, and streaming immediately starts
@@ -181,6 +177,12 @@ class StreamSession:
                     await asyncio.sleep(0.5)
                     if time.time() - last_stats > 30.0:
                         last_stats = time.time()
+                        try:
+                            await self._read_info(client)
+                        except Exception:
+                            # Keep the rate we already have; a link that is
+                            # really gone ends this loop via is_connected.
+                            pass
                         await self._read_stats(client)
                     # Flush a partial block if the tag went quiet, so the live
                     # view does not stall waiting for a block that will not fill.
@@ -196,6 +198,20 @@ class StreamSession:
                         # Already gone. Nothing to say about it that the
                         # disconnect has not said.
                         pass
+
+    async def _read_info(self, client) -> None:
+        """Read the rate the tag has measured, again every 30 s.
+
+        Not once per connection: the tag only publishes a measured rate after
+        10 s of active sampling, so a host that connects soon after a reboot
+        reads 0, and the oscillator drifts with temperature after that.
+        Blocks written before a measurement exists carry 0 - "not measured" -
+        rather than the nominal rate dressed up as one (S-6).
+        """
+        raw = await client.read_gatt_char(protocol.CHAR_INFO)
+        self.info = protocol.decode_info(bytes(raw))
+        self._fs_mhz = protocol.measured_rate_mhz(self.info)
+        store.set_info(self._conn, self.mac, json.dumps(self.info))
 
     async def _read_stats(self, client) -> None:
         try:

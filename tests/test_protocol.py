@@ -226,6 +226,15 @@ def test_effective_rate_prefers_measured():
     assert p.effective_rate_hz(None) == p.NOMINAL_RATE_HZ
 
 
+def test_measured_rate_is_zero_until_the_tag_has_measured_one():
+    """Stored blocks carry the *measured* rate or 0. The nominal 400 Hz stored
+    in its place was reported by the API as measured, hiding a 5% frequency
+    error behind the label that says there is none (S-6)."""
+    assert p.measured_rate_mhz({"nominal_hz": 400.0, "measured_hz": None}) == 0
+    assert p.measured_rate_mhz({"nominal_hz": 400.0, "measured_hz": 379.658}) == 379_658
+    assert p.measured_rate_mhz(None) == 0
+
+
 if __name__ == "__main__":
     fails = 0
     for name, fn in sorted(globals().items()):

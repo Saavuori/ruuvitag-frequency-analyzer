@@ -362,3 +362,16 @@ def effective_rate_hz(info: dict | None) -> float:
     if info:
         return info.get("measured_hz") or info.get("nominal_hz") or NOMINAL_RATE_HZ
     return NOMINAL_RATE_HZ
+
+
+def measured_rate_mhz(info: dict | None) -> int:
+    """The measured rate in milli-Hz for a stored block, or 0 if the tag has
+    not measured one yet.
+
+    Deliberately *not* effective_rate_hz: the store reads a non-zero rate as
+    measured and the UI labels it so. Filling in the nominal 400 Hz here would
+    present the label as a measurement - the 5% error S-6 exists to catch,
+    marked as already caught.
+    """
+    hz = info.get("measured_hz") if info else None
+    return int(round(hz * 1000)) if hz else 0
