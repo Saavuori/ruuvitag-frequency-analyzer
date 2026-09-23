@@ -120,13 +120,18 @@ def decode_c2(payload: bytes) -> dict:
         raise ValueError(f"0xC2 needs 24 bytes, got {len(payload)}")
 
     flags = payload[1]
+    chunk_idx, n_chunks = payload[3], payload[4]
+    if not chunk_idx < n_chunks:
+        # Reassembly indexes chunks 0 .. n-1. A chunk outside that range is
+        # not part of any frame this spec can describe.
+        raise ValueError(f"0xC2 chunk {chunk_idx} of {n_chunks}")
     return {
         "format": "0xC2",
         "spec_version": flags >> 4,
         "invalid": bool(flags & 0x01),
         "frame_id": payload[2],
-        "chunk_idx": payload[3],
-        "n_chunks": payload[4],
+        "chunk_idx": chunk_idx,
+        "n_chunks": n_chunks,
         "first_bin": payload[5],
         "bins_db": list(payload[C2_HEADER_LEN:24]),
     }
@@ -186,8 +191,10 @@ class SpectrumAssembler:
         entry["chunks"][chunk["chunk_idx"]] = chunk["bins_db"]
         entry["invalid"] = entry["invalid"] or chunk["invalid"]
 
+        # Every index 0 .. n-1, not merely n of them: chunks of one frame that
+        # disagree about its length must not add up to a "complete" one.
         n = chunk["n_chunks"]
-        if len(entry["chunks"]) < n:
+        if any(i not in entry["chunks"] for i in range(n)):
             # Bound memory, and count what we lose rather than losing it quietly.
             while len(self._pending) > self._max_pending:
                 oldest = min(self._pending, key=lambda k: self._pending[k]["ts"])
