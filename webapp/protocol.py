@@ -26,12 +26,7 @@ Verified against Ruuvi's published DF5 valid/max/min/invalid test vectors; run
 
 from __future__ import annotations
 
-import math
 import struct
-
-# Stand-in for log10(0) when a bin is exactly zero. Well below the LIS2DH12's
-# noise floor (~220 ug/sqrt(Hz)), so it can never be mistaken for a measurement.
-DB_FLOOR = -180.0
 
 RUUVI_COMPANY_ID = 0x0499
 DF5 = 0x05
@@ -140,18 +135,6 @@ def decode_c2(payload: bytes) -> dict:
 def db_to_microg(db_value: int | float) -> float:
     """Inverse of the transmitted encoding: 0.5 dB per LSB referenced to 1 ug."""
     return 10.0 ** (db_value / 40.0)
-
-
-def microg_to_db(microg: float) -> float:
-    """Amplitude in ug to dB referenced to 1 ug.
-
-    Note this is *real* dB, not the transmitted byte. The 0xC2 encoding packs
-    0.5 dB per LSB, so its byte value is twice the dB figure; a chart axis
-    should be labelled in these units, not in those.
-    """
-    if microg <= 0.0:
-        return DB_FLOOR
-    return 20.0 * math.log10(microg)
 
 
 def bin_hz(index: int) -> float:

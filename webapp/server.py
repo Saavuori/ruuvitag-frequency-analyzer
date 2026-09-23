@@ -84,7 +84,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _json(self, payload, code: int = 200):
-        body = json.dumps(payload, default=_json_safe, allow_nan=False).encode()
+        # allow_nan=False: a NaN that escaped _json_safe is a bug to hear about,
+        # not a token to hand the browser. (json.dumps never passes floats to
+        # a `default` hook, so one could not have caught it here.)
+        body = json.dumps(payload, allow_nan=False).encode()
         self._send(body, "application/json", code)
 
     def _static(self, path: str):
