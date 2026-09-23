@@ -252,12 +252,19 @@ class Collector:
 
     def handle(self, device, adv) -> None:
         mac = device.address.upper()
-        self._devices[mac] = device
 
         # The service UUID rides in the scan response, so an active scan tells
         # us which tags can be captured from before anyone tries to connect.
         uuids = {u.lower() for u in (adv.service_uuids or ())}
-        if protocol.SERVICE_UUID in uuids and mac not in self._seen_service:
+        streamable = protocol.SERVICE_UUID in uuids
+        payload = adv.manufacturer_data.get(protocol.RUUVI_COMPANY_ID)
+        if payload is None and not streamable:
+            # Phones, headphones and TVs, many on rotating random addresses.
+            # Remembering each one would grow without bound over a long run.
+            return
+        self._devices[mac] = device
+
+        if streamable and mac not in self._seen_service:
             self._seen_service.add(mac)
             with self._lock:
                 self._conn.execute(
@@ -266,7 +273,6 @@ class Collector:
                     (mac, time.time(), time.time()))
                 self._conn.commit()
 
-        payload = adv.manufacturer_data.get(protocol.RUUVI_COMPANY_ID)
         if payload is None:
             return
         self.stats["received"] += 1
