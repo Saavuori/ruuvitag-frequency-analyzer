@@ -63,7 +63,7 @@ Host side, in `webapp/dsp.py`, with everything configurable per request:
 | Overlap | 75% | 0 … 87.5% |
 | Window | Hann | Hann, Hamming, Blackman, flat top, none |
 | Axis | Z | X, Y, Z, \|xyz\| |
-| Band | 1–50 Hz | any |
+| Band | 1–150 Hz | any |
 
 **Resolution and window length are the same fact.** ΔF ≈ fs/N and the window
 spans N/fs seconds, so 0.39 Hz bins require a 2.56 s window. Always. Overlap

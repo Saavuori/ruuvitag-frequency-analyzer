@@ -242,8 +242,8 @@ def decode_info(data: bytes) -> dict:
     The measured rate matters more than it looks. The LIS2DH12's ODR comes from
     an RC oscillator a few percent off nominal and drifting with temperature, so
     taking the label at face value puts a few percent of error on every
-    frequency the analyser draws. 50 Hz mains would land at 48.5 and look like
-    something else.
+    frequency the analyser draws. On the bench tag (379.7 Hz measured) 50 Hz
+    would read as 52.7 and look like something else.
     """
     if len(data) < 12:
         raise ValueError(f"info needs 12 bytes, got {len(data)}")

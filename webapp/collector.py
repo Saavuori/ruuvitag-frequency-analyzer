@@ -148,7 +148,7 @@ class StreamSession:
     async def _session(self) -> None:
         target = self._resolve(self.mac)
         if target is None:
-            # Not heard yet. The tag advertises every 1.28 s, so this resolves
+            # Not heard yet. The tag advertises every second, so this resolves
             # in a couple of seconds or the tag is not there at all.
             self.error = f"waiting to hear {self.mac} advertise"
             await asyncio.sleep(2.0)

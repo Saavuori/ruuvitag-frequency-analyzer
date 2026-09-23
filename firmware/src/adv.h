@@ -2,9 +2,9 @@
  * Advertisement encoders.
  *
  * Deliberately free of Zephyr, Nordic and libc dependencies: pure bit packing
- * over plain integers. That is what lets these run in a host unit test against
- * Ruuvi's published vectors (firmware/test/test_adv.c) instead of only on
- * hardware, and it is the entire cost of the DF5 compatibility requirement.
+ * over plain integers, so they can be compiled into a host unit test against
+ * Ruuvi's published vectors. No such C test exists yet: today only the Python
+ * decoder is checked against them (tests/test_protocol.py).
  *
  * Field layout: docs/05-ble-protocol.md
  */
@@ -104,6 +104,5 @@ int16_t  rfa_temp_from_millicelsius(int32_t millicelsius);
 uint16_t rfa_humidity_from_millipercent(int32_t millipercent);
 uint16_t rfa_pressure_from_pascal(int32_t pascal);
 uint16_t rfa_power_field(uint16_t battery_mv, int8_t tx_power_dbm);
-uint16_t rfa_amplitude_from_microg(uint32_t microg);
 
 #endif /* RFA_ADV_H */

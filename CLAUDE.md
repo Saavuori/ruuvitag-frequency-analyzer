@@ -4,7 +4,7 @@ Project guidance for Claude Code. Read this before making changes.
 
 ## What this is
 
-A **1–50 Hz vibration spectrum analyzer** built on RuuviTag hardware
+A **1–150 Hz vibration spectrum analyzer** built on RuuviTag hardware
 (nRF52832 + LIS2DH12). Custom Zephyr firmware streams raw 400 Hz accelerometer
 samples over BLE; a local Python service transforms them and a browser draws a
 live spectrum and waterfall.

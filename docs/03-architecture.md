@@ -4,7 +4,7 @@
 
 | Thread | Stack | Priority | Job |
 |--------|-------|----------|-----|
-| `main` | 2 kB | — | Advertising: re-assert every 1.28 s slot, rotate DF5 and 0xC2 chunks |
+| `main` | 2 kB | — | Advertising: re-assert every advertising slot (1 s default), rotate DF5 and 0xC2 chunks |
 | `rfa_sampler_thread` | 4 kB | 5 | Drain the FIFO every 40 ms, run the DC tracker and decimator, recompute the broadcast spectrum every 1.28 s |
 | `rfa_streamer` | 2 kB | 6 | Pull from the raw ring and notify over GATT |
 | Zephyr BT RX/TX | — | — | The stack's own |
