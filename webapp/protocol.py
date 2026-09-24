@@ -26,12 +26,7 @@ Verified against Ruuvi's published DF5 valid/max/min/invalid test vectors; run
 
 from __future__ import annotations
 
-import math
 import struct
-
-# Stand-in for log10(0) when a bin is exactly zero. Well below the LIS2DH12's
-# noise floor (~220 ug/sqrt(Hz)), so it can never be mistaken for a measurement.
-DB_FLOOR = -180.0
 
 RUUVI_COMPANY_ID = 0x0499
 DF5 = 0x05
@@ -120,13 +115,18 @@ def decode_c2(payload: bytes) -> dict:
         raise ValueError(f"0xC2 needs 24 bytes, got {len(payload)}")
 
     flags = payload[1]
+    chunk_idx, n_chunks = payload[3], payload[4]
+    if not chunk_idx < n_chunks:
+        # Reassembly indexes chunks 0 .. n-1. A chunk outside that range is
+        # not part of any frame this spec can describe.
+        raise ValueError(f"0xC2 chunk {chunk_idx} of {n_chunks}")
     return {
         "format": "0xC2",
         "spec_version": flags >> 4,
         "invalid": bool(flags & 0x01),
         "frame_id": payload[2],
-        "chunk_idx": payload[3],
-        "n_chunks": payload[4],
+        "chunk_idx": chunk_idx,
+        "n_chunks": n_chunks,
         "first_bin": payload[5],
         "bins_db": list(payload[C2_HEADER_LEN:24]),
     }
@@ -135,18 +135,6 @@ def decode_c2(payload: bytes) -> dict:
 def db_to_microg(db_value: int | float) -> float:
     """Inverse of the transmitted encoding: 0.5 dB per LSB referenced to 1 ug."""
     return 10.0 ** (db_value / 40.0)
-
-
-def microg_to_db(microg: float) -> float:
-    """Amplitude in ug to dB referenced to 1 ug.
-
-    Note this is *real* dB, not the transmitted byte. The 0xC2 encoding packs
-    0.5 dB per LSB, so its byte value is twice the dB figure; a chart axis
-    should be labelled in these units, not in those.
-    """
-    if microg <= 0.0:
-        return DB_FLOOR
-    return 20.0 * math.log10(microg)
 
 
 def bin_hz(index: int) -> float:
@@ -186,8 +174,10 @@ class SpectrumAssembler:
         entry["chunks"][chunk["chunk_idx"]] = chunk["bins_db"]
         entry["invalid"] = entry["invalid"] or chunk["invalid"]
 
+        # Every index 0 .. n-1, not merely n of them: chunks of one frame that
+        # disagree about its length must not add up to a "complete" one.
         n = chunk["n_chunks"]
-        if len(entry["chunks"]) < n:
+        if any(i not in entry["chunks"] for i in range(n)):
             # Bound memory, and count what we lose rather than losing it quietly.
             while len(self._pending) > self._max_pending:
                 oldest = min(self._pending, key=lambda k: self._pending[k]["ts"])
@@ -252,8 +242,8 @@ def decode_info(data: bytes) -> dict:
     The measured rate matters more than it looks. The LIS2DH12's ODR comes from
     an RC oscillator a few percent off nominal and drifting with temperature, so
     taking the label at face value puts a few percent of error on every
-    frequency the analyser draws. 50 Hz mains would land at 48.5 and look like
-    something else.
+    frequency the analyser draws. On the bench tag (379.7 Hz measured) 50 Hz
+    would read as 52.7 and look like something else.
     """
     if len(data) < 12:
         raise ValueError(f"info needs 12 bytes, got {len(data)}")
@@ -362,3 +352,16 @@ def effective_rate_hz(info: dict | None) -> float:
     if info:
         return info.get("measured_hz") or info.get("nominal_hz") or NOMINAL_RATE_HZ
     return NOMINAL_RATE_HZ
+
+
+def measured_rate_mhz(info: dict | None) -> int:
+    """The measured rate in milli-Hz for a stored block, or 0 if the tag has
+    not measured one yet.
+
+    Deliberately *not* effective_rate_hz: the store reads a non-zero rate as
+    measured and the UI labels it so. Filling in the nominal 400 Hz here would
+    present the label as a measurement - the 5% error S-6 exists to catch,
+    marked as already caught.
+    """
+    hz = info.get("measured_hz") if info else None
+    return int(round(hz * 1000)) if hz else 0

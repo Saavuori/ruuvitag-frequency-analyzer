@@ -32,8 +32,8 @@
  * a new spectrum every 1.28 s.
  *
  * There is no point going faster on this path. A frame takes 8 advertisements
- * to transmit, which at the 1.28 s advertising slot is 10.24 s - so the
- * transform is already running 8x faster than the radio can drain it, and the
+ * to transmit, which at the default 1 s advertising slot is ~8 s - so the
+ * transform is already running ~6x faster than the radio can drain it, and the
  * broadcast spectrum is a periodic snapshot rather than a continuous record.
  * Continuity is what the GATT stream is for.
  */
@@ -47,8 +47,9 @@ void rfa_fft(float *re, float *im, int n);
  * 0.5 dB/LSB referenced to 1 ug (see rfa_spectrum_db in adv.h).
  *
  * n must be RFA_WF_N. Writes n_bins values covering DC to n/2. Hann window and
- * mean removal, normalised so a tone reads its true amplitude regardless of
- * where it falls between bin centres.
+ * mean removal, coherent-gain normalised so a tone on a bin centre reads its
+ * true amplitude. Between centres it reads up to 1.42 dB low (scalloping);
+ * nothing here corrects that - the host's dominant_peak does.
  */
 void rfa_spectrum_bins(const float *samples_ug, int n, uint8_t *out_db, int n_bins);
 

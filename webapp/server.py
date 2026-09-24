@@ -51,6 +51,22 @@ def _json_safe(x):
     return x
 
 
+def _static_file(path: str) -> str | None:
+    """The file under STATIC_DIR that a URL path names, or None.
+
+    Containment is checked on whole path components. A string prefix test
+    would let `/../static_old/x` out, since that normalises to a sibling
+    directory whose name merely starts with "static".
+    """
+    name = "index.html" if path in ("/", "") else path.lstrip("/")
+    full = os.path.normpath(os.path.join(STATIC_DIR, name))
+    try:
+        inside = os.path.commonpath([full, STATIC_DIR]) == STATIC_DIR
+    except ValueError:              # another drive on Windows
+        return None
+    return full if inside and os.path.isfile(full) else None
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -68,13 +84,15 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _json(self, payload, code: int = 200):
-        body = json.dumps(payload, default=_json_safe, allow_nan=False).encode()
+        # allow_nan=False: a NaN that escaped _json_safe is a bug to hear about,
+        # not a token to hand the browser. (json.dumps never passes floats to
+        # a `default` hook, so one could not have caught it here.)
+        body = json.dumps(payload, allow_nan=False).encode()
         self._send(body, "application/json", code)
 
     def _static(self, path: str):
-        name = "index.html" if path in ("/", "") else path.lstrip("/")
-        full = os.path.normpath(os.path.join(STATIC_DIR, name))
-        if not full.startswith(STATIC_DIR) or not os.path.isfile(full):
+        full = _static_file(path)
+        if full is None:
             self._send(b"not found", "text/plain", 404)
             return
         ctype = {".html": "text/html; charset=utf-8",
@@ -94,9 +112,9 @@ class Handler(BaseHTTPRequestHandler):
 
         q = parse_qs(u.query)
         mac = (q.get("mac", [None])[0] or "").upper() or None
-        since = float(q.get("since", ["300"])[0])
 
         try:
+            since = float(q.get("since", ["300"])[0])
             if u.path == "/api/tags":
                 self._json(self._tags())
             elif u.path == "/api/status":
@@ -109,6 +127,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(store.series(_conn, mac, since))
             else:
                 self._json({"error": "not found"}, 404)
+        except ValueError as exc:
+            # A query parameter that does not parse or is out of range. Say
+            # so, rather than dropping the connection or blaming the server.
+            self._json({"error": str(exc)}, 400)
         except Exception as exc:
             self._json({"error": str(exc)}, 500)
 

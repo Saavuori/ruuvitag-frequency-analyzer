@@ -120,6 +120,32 @@ def test_assembler_drops_a_partial_frame():
     assert a.dropped > 0
 
 
+def test_c2_chunk_outside_its_frame_is_rejected():
+    """A chunk index at or past the chunk count cannot belong to any frame.
+    Accepting it let a frame reach its chunk count with a hole in it, and
+    reassembly then raised KeyError inside the scanner callback."""
+    bad = bytes([0xC2, 0x10, 1, 9, p.C2_CHUNKS, 0]) + bytes(p.C2_BINS_PER_CHUNK)
+    try:
+        p.decode(bad)
+    except ValueError:
+        return
+    raise AssertionError("decoded chunk 9 of an 8-chunk frame")
+
+
+def test_assembler_needs_every_index_not_just_enough_chunks():
+    """Chunks that disagree about the frame length must not add up to a
+    whole frame."""
+    a = p.SpectrumAssembler()
+    body = [1] * p.C2_BINS_PER_CHUNK
+    for i in range(p.C2_CHUNKS - 2):
+        assert a.add("AA", p.decode(_c2_chunk(1, i, body)), 0.0) is None
+    # Index 8 of a frame claiming 9 chunks, then index 6 of 8: eight distinct
+    # chunks are pending, which is "enough", but index 7 never arrived.
+    odd = bytes([0xC2, 0x10, 1, p.C2_CHUNKS, p.C2_CHUNKS + 1, 0]) + bytes(body)
+    assert a.add("AA", p.decode(odd), 0.0) is None
+    assert a.add("AA", p.decode(_c2_chunk(1, p.C2_CHUNKS - 2, body)), 0.0) is None
+
+
 def test_db_encoding_round_trips():
     """0.5 dB per LSB from 1 ug. 255 must still be under the +/-2 g full scale,
     or the top of the range encodes something the sensor cannot measure."""
@@ -224,6 +250,15 @@ def test_effective_rate_prefers_measured():
     assert p.effective_rate_hz({"nominal_hz": 400.0, "measured_hz": 389.0}) == 389.0
     assert p.effective_rate_hz({"nominal_hz": 400.0, "measured_hz": None}) == 400.0
     assert p.effective_rate_hz(None) == p.NOMINAL_RATE_HZ
+
+
+def test_measured_rate_is_zero_until_the_tag_has_measured_one():
+    """Stored blocks carry the *measured* rate or 0. The nominal 400 Hz stored
+    in its place was reported by the API as measured, hiding a 5% frequency
+    error behind the label that says there is none (S-6)."""
+    assert p.measured_rate_mhz({"nominal_hz": 400.0, "measured_hz": None}) == 0
+    assert p.measured_rate_mhz({"nominal_hz": 400.0, "measured_hz": 379.658}) == 379_658
+    assert p.measured_rate_mhz(None) == 0
 
 
 if __name__ == "__main__":

@@ -365,7 +365,7 @@ def latest_run(blocks: list[tuple[int, np.ndarray, float]]
     return [(i, a) for i, a, _ in blocks[start:]]
 
 
-def assemble(blocks: list[tuple[int, np.ndarray]], expect_gaps: bool = True
+def assemble(blocks: list[tuple[int, np.ndarray]]
              ) -> tuple[np.ndarray, int, int]:
     """Stitch indexed sample blocks into one array, NaN across what was lost.
 
@@ -394,6 +394,4 @@ def assemble(blocks: list[tuple[int, np.ndarray]], expect_gaps: bool = True
         out[start:end] = data
 
     missing = int(np.isnan(out[:, 0]).sum())
-    if not expect_gaps and missing:
-        out = np.nan_to_num(out, nan=0.0)
     return out, first, missing

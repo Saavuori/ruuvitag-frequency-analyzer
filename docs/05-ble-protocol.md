@@ -4,7 +4,7 @@ Three channels, all under Ruuvi's company ID `0x0499` except the GATT service.
 
 | Channel | Kind | Carries | Rate |
 |---------|------|---------|------|
-| DF5 `0x05` | advertisement | environment + DC accel | one per ~2.6 s |
+| DF5 `0x05` | advertisement | environment + DC accel | every 1 s slot, except while a `0xC2` frame goes out |
 | `0xC2` | advertisement | 128-bin spectrum, chunked | one frame per ~10 s |
 | GATT stream | connection | raw 400 Hz samples | ~2.4 kB/s |
 
@@ -30,10 +30,11 @@ a movement waveform and cannot represent anything above ~0.2 Hz — which is
 below this project's entire band. Do not plot it next to a spectrum and expect
 them to agree.
 
-**The movement counter stays at 0.** In Ruuvi's firmware it counts
-threshold-crossing events. This firmware measures spectra, not events, and
-inventing a threshold to populate the field would put a number nobody chose in
-front of consumers who would reasonably believe it.
+**The movement counter counts wake-on-motion events**: the accelerometer's
+activity interrupt, the same threshold-crossing meaning it has in Ruuvi's
+firmware. It saturates at 254, since 255 is DF5's "not available". Watching it
+is how the motion threshold is checked against a real machine
+(`tools/tune_motion.py`); with `CONFIG_RFA_WAKE_ON_MOTION=n` it stays at 0.
 
 ---
 
@@ -72,8 +73,9 @@ full.
 
 ### What it costs, measured
 
-Eight advertisements per frame. At the 1.28 s slot that is one spectrum per
-10.24 s **before** loss. On the bench, 30 s of listening at −84 dBm heard chunks
+Eight advertisements per frame. At the default 1 s slot that is one spectrum
+per ~8 s **before** loss (10.24 s at the 1.28 s slot the figures below were
+measured with). On the bench, 30 s of listening at −84 dBm heard chunks
 `[0,2,3,4,5,6]` and reassembled **zero** complete frames.
 
 That is the honest characterisation of this channel, and the reason ADR-0002

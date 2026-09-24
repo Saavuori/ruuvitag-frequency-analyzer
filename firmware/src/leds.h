@@ -20,7 +20,7 @@ void rfa_leds_init(void);
 /* Both LEDs on briefly, so "it booted" is visible from across the room. */
 void rfa_leds_boot(void);
 
-/* Green flash: one advertisement went out. At 1.28 s spacing this reads as a
+/* Green flash: one advertisement went out. At the 1 s default spacing this reads as a
  * steady heartbeat, and its absence means the main loop has stopped. */
 void rfa_leds_advert(void);
 

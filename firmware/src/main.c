@@ -3,7 +3,8 @@
  *
  * Two transports, deliberately different in kind (docs/05-ble-protocol.md):
  *
- *   broadcast  DF5 every other slot, 0xC2 spectrum chunks in between. No
+ *   broadcast  DF5 every slot, except that a queued 0xC2 frame goes out as the
+ *              8 slots after a DF5 one. No
  *              connection, any number of listeners. The sensor is duty-cycled
  *              between bursts, so a spectrum arrives once per idle period or
  *              when something moves (power.h).

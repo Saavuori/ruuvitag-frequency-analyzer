@@ -34,7 +34,9 @@ const state = {
   data: null,             // last /api/spectrogram payload
   hold: null,             // element-wise max, persists until reset
   cursor: null,           // {x} in canvas pixels, or null
+  tags: null,             // last /api/tags payload
   timer: null,
+  period: null,           // refresh period the timer is running at
 };
 
 /* Inferno, sampled at 10 points and interpolated. Perceptually uniform, so
@@ -113,6 +115,7 @@ async function refreshTags() {
     return;
   }
 
+  state.tags = payload;
   const tags = payload.tags || [];
   state.streaming = payload.stream && payload.stream.connected ? payload.stream.mac : null;
 
@@ -183,6 +186,10 @@ async function refreshTags() {
     el.link.textContent = tags.length ? `${tags.length} tag${tags.length > 1 ? 's' : ''} seen` : 'no tags seen';
     el.link.className = 'link';
   }
+
+  // A capture requested at startup (--stream) connects seconds after the
+  // page loads; pick up the faster refresh when it does.
+  schedule();
 }
 
 async function refreshSpectrum() {
@@ -233,11 +240,11 @@ function showDerived(d) {
     : 'Nominal rate - the tag has not reported a measured one, so every frequency here may be off by the oscillator error (a few percent)';
 }
 
-async function showPower() {
-  let p;
-  try {
-    p = await (await fetch('/api/tags')).json();
-  } catch (e) { return; }
+/* From the last /api/tags payload rather than a second fetch of the same
+   thing: the tag's stats only change when the collector re-reads them. */
+function showPower() {
+  const p = state.tags;
+  if (!p) return;
 
   const tag = (p.tags || []).find((t) => t.mac === state.mac);
   const stats = (p.stream && p.stream.stats) || (tag && tag.stats);
@@ -282,9 +289,9 @@ function showStats(d) {
   push('Windows dropped', d.lost_windows, d.lost_windows ? 'bad' : 'ok');
   if (d.peak) {
     push('Strongest tone', d.peak.hz.toFixed(2) + ' Hz');
-    push('If 1× shaft', rpm(d.peak.hz).toFixed(0) + ' RPM');
-    push('If 2× / 3×', (rpm(d.peak.hz) / 2).toFixed(0) + ' / ' +
-                       (rpm(d.peak.hz) / 3).toFixed(0) + ' RPM');
+    const cand = rpmCandidates(d.peak.hz);
+    push('If 1× shaft', cand[0].rpm.toFixed(0) + ' RPM');
+    push('If 2× / 3×', cand[1].rpm.toFixed(0) + ' / ' + cand[2].rpm.toFixed(0) + ' RPM');
     push('Its amplitude', (d.peak.amplitude_ug / 1000).toFixed(2) + ' mg');
   } else {
     push('Strongest tone', 'none above noise');
@@ -684,10 +691,12 @@ function resetHold() {
 /* ---- wiring ------------------------------------------------------------ */
 
 function schedule() {
-  clearInterval(state.timer);
   // Faster while capturing: a column arrives every hop, and the point of the
   // instrument is watching it arrive.
   const period = state.streaming === state.mac ? 1000 : 4000;
+  if (state.timer !== null && period === state.period) return;
+  clearInterval(state.timer);
+  state.period = period;
   state.timer = setInterval(refreshSpectrum, period);
 }
 
